@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# Gerçek (veya herhangi bir) Java kaynak ağacını tarar.
+#
+# Kullanım:
+#   ./scripts/run-analyze.sh /path/to/proje
+#   ./scripts/run-analyze.sh /path/to/proje/src/main/java
+#
+# Ortam değişkenleri (isteğe bağlı):
+#   LANGUAGE_LEVEL=JAVA_11   (varsayılan JAVA_17; eski DWH için JAVA_6)
+#   OUTPUT_DIR=./my-reports  (varsayılan: ./analysis-output)
+set -euo pipefail
+
+# Argüman yoksa bulunduğunuz klasör taranır (proje kökünde çalıştırın).
+SOURCE_DIR="${1:-.}"
+SOURCE="$(cd "${SOURCE_DIR}" && pwd)"
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+OUT_DIR="${OUTPUT_DIR:-${ROOT}/analysis-output}"
+LANG="${LANGUAGE_LEVEL:-JAVA_17}"
+
+mkdir -p "${OUT_DIR}"
+
+JAR="${ANALYZER_JAR:-${ROOT}/target/java-code-analyzer.jar}"
+if [[ ! -f "${JAR}" ]]; then
+  if [[ -f "${ROOT}/pom.xml" ]] && grep -q 'java-code-analyzer' "${ROOT}/pom.xml" 2>/dev/null; then
+    echo "[STANDALONE] JAR yok, analyzer derleniyor (mvn package)..."
+    mvn -q -f "${ROOT}/pom.xml" package
+    JAR="${ROOT}/target/java-code-analyzer.jar"
+  else
+    echo "[HATA] java-code-analyzer.jar bulunamadı: ${JAR}"
+    echo "       Gerçek Spring projenize sadece script kopyaladıysanız JAR'ı da koyun:"
+    echo "         target/java-code-analyzer.jar  (analyzer repoda mvn package ile üretin)"
+    echo "       veya ANALYZER_JAR=/tam/yol/java-code-analyzer.jar ./scripts/run-analyze.sh"
+    exit 1
+  fi
+fi
+
+JSON="${OUT_DIR}/standalone.json"
+MD="${OUT_DIR}/parser-raporu.md"
+
+java -jar "${JAR}" \
+  --path="${SOURCE}" \
+  --language-level="${LANG}" \
+  --output="${JSON}" \
+  --markdown="${MD}" \
+  --top=20
+
+echo ""
+echo "Bitti."
+echo "  Markdown: ${MD}"
+echo "  JSON:     ${JSON}"
