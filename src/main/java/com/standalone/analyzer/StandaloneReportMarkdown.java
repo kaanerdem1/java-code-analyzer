@@ -23,6 +23,8 @@ final class StandaloneReportMarkdown {
         md.append("# Parser analiz raporu\n\n");
         md.append("Bu rapor **Java kaynak kodunu** tarayıp her **metod** için karmaşıklık ve **teknik risk** özetler.\n\n");
 
+        md.append("Her metod satırında **ata zinciri** vardır: `modül › dosya › paket.Sınıf › metod(...)` — en alttaki satır metod, üsttekiler yeri kaybetmemeniz içindir.\n\n");
+
         md.append("## Kısa sözlük\n\n");
         md.append("- **Dallanma karmaşıklığı (CC):** Metod içinde kaç farklı karar/yol var ");
         md.append("(if, else, for, while, catch, `&&`, `||` vb.). Yüksek = test etmesi zor.\n");
@@ -59,41 +61,44 @@ final class StandaloneReportMarkdown {
                 .append(dist.get(RiskLevel.CRITICAL)).append(" |\n\n");
 
         md.append("## En riskli metodlar\n\n");
-        md.append("| Sıra | Risk skoru | Seviye | Sınıf | Metod imzası | Dallanma (CC) | Kod satırı | ");
-        md.append("İç içe | Parametre | Başlangıç satırı |\n");
-        md.append("|-----:|-----------:|--------|-------|--------------|-------------:|-----------:|");
-        md.append("------:|----------:|-----------------:|\n");
+        md.append("| Sıra | Ata zinciri (modül › … › metod) | Risk | Seviye | CC | LOC | İç içe | Satır |\n");
+        md.append("|-----:|----------------------------------|-----:|--------|---:|----:|-------:|------:|\n");
         int i = 1;
         for (RiskHotspot h : report.topRiskyMethods()) {
-            md.append("| ").append(i++).append(" | ").append(fmt(h.riskScore())).append(" | ")
-                    .append(levelTr(h.riskLevel())).append(" | `").append(h.className()).append("` | `")
-                    .append(escapeCell(h.method())).append("` | ").append(h.cyclomaticComplexity())
+            String chain = h.ancestorPath() == null || h.ancestorPath().isEmpty()
+                    ? h.file() + " › " + h.className() + " › " + h.method()
+                    : MethodHierarchy.breadcrumb(h.ancestorPath());
+            md.append("| ").append(i++).append(" | `").append(escapeCell(chain)).append("` | ")
+                    .append(fmt(h.riskScore())).append(" | ")
+                    .append(levelTr(h.riskLevel())).append(" | ")
+                    .append(h.cyclomaticComplexity())
                     .append(" | ").append(h.codeLines()).append(" | ").append(h.maxNestingDepth())
-                    .append(" | ").append(h.parameterCount()).append(" | ").append(h.startLine())
-                    .append(" |\n");
+                    .append(" | ").append(h.startLine()).append(" |\n");
         }
         md.append("\n");
 
-        md.append("## Tüm metodlar (risk skoruna göre)\n\n");
-        md.append("Alt skorlar 0–1 arası; hangi boyut riski artırdıysa o yüksek çıkar.\n\n");
-        md.append("| Risk skoru | Seviye | Dosya | Metod | Dallanma | Kod satırı | İç içe | Dev metod? | ");
-        md.append("Katkı: dallanma | satır | iç içe | parametre |\n");
-        md.append("|-----------:|--------|-------|-------|----------:|-----------:|-------:|:----------:|");
-        md.append("---------------:|------:|---------:|-----------:|\n");
-
         List<MethodRow> rows = flattenMethods(report.files());
         rows.sort(Comparator.comparingDouble(MethodRow::score).reversed());
+
+        md.append("## Tüm metodlar (risk skoruna göre)\n\n");
+        if (rows.isEmpty()) {
+            md.append("*Özet mod (`--detail=summary`): metod listesi JSON'da kısaltıldı; yukarıdaki hotspot tablosuna bakın.*\n\n");
+        } else {
+        md.append("Alt skorlar 0–1 arası; hangi boyut riski artırdıysa o yüksek çıkar.\n\n");
+        md.append("| Risk | Seviye | Ata zinciri | CC | LOC | İç içe | Dev? | Katkılar (d/s/i/p) |\n");
+        md.append("|-----:|--------|-------------|---:|----:|-------:|:----:|-------------------|\n");
         for (MethodRow r : rows) {
             RiskBreakdown b = r.breakdown();
             String subs = b == null ? "—"
-                    : fmt(b.ccSubScore()) + " | " + fmt(b.locSubScore()) + " | "
-                    + fmt(b.nestingSubScore()) + " | " + fmt(b.paramsSubScore());
+                    : fmt(b.ccSubScore()) + " / " + fmt(b.locSubScore()) + " / "
+                    + fmt(b.nestingSubScore()) + " / " + fmt(b.paramsSubScore());
             md.append("| ").append(fmt(r.score())).append(" | ").append(levelTr(r.level())).append(" | `")
-                    .append(r.file()).append("` | `").append(escapeCell(r.signature())).append("` | ")
+                    .append(escapeCell(r.ancestorLabel())).append("` | ")
                     .append(r.cc()).append(" | ").append(r.loc()).append(" | ").append(r.nest()).append(" | ")
                     .append(r.god() ? "evet" : "hayır").append(" | ").append(subs).append(" |\n");
         }
         md.append("\n");
+        }
 
         if (!report.errors().isEmpty()) {
             md.append("## Okunamayan dosyalar\n\n");
@@ -123,7 +128,10 @@ final class StandaloneReportMarkdown {
         for (FileMetric file : files) {
             for (ClassMetric type : file.classes()) {
                 for (MethodMetric m : type.methods()) {
-                    rows.add(new MethodRow(file.path(), m.signature(), m.riskScore(), m.riskLevel(),
+                    String label = m.ancestorPath() == null || m.ancestorPath().isEmpty()
+                            ? file.path() + " › " + m.signature()
+                            : MethodHierarchy.breadcrumb(m.ancestorPath());
+                    rows.add(new MethodRow(label, m.riskScore(), m.riskLevel(),
                             m.cyclomaticComplexity(), m.codeLines(), m.maxNestingDepth(), m.godMethod(),
                             m.riskBreakdown()));
                 }
@@ -141,7 +149,7 @@ final class StandaloneReportMarkdown {
     }
 
     private record MethodRow(
-            String file, String signature, double score, RiskLevel level,
+            String ancestorLabel, double score, RiskLevel level,
             int cc, int loc, int nest, boolean god, RiskBreakdown breakdown) {
     }
 }

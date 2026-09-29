@@ -167,7 +167,7 @@ public class ComplexityVisitor extends VoidVisitorAdapter<Void> {
                 declaration.getNameAsString(), kind, signatureOf(declaration), start, end,
                 context.cyclomatic, Math.max(0, end - start + 1), loc, countStatements(body),
                 context.maxDepth, parameterCount, god, risk.score(), risk.level(), risk.factors(),
-                risk.breakdown()));
+                risk.breakdown(), "", List.of()));
     }
 
     // ------------------------------------------------------------------ decision points

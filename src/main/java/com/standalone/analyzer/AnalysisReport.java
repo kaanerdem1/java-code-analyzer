@@ -80,7 +80,9 @@ public record AnalysisReport(
             int codeLines,
             int maxNestingDepth,
             int parameterCount,
-            List<String> riskFactors) {
+            List<String> riskFactors,
+            String moduleRoot,
+            List<String> ancestorPath) {
     }
 
     public record FileError(String file, String message) {

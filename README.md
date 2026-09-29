@@ -117,6 +117,46 @@ Parser + PMD mock:
 
 ---
 
+## Büyük monorepo / dev codebase
+
+Varsayılan: paralel parse (CPU’ya göre worker), `target`/`build`/`.gradle` atlanır, 500 dosyada bir ilerleme logu.
+
+**Sadece production kaynağı (önerilen):**
+
+```bash
+INCLUDE_GLOBS='**/src/main/java/**' \
+EXCLUDE_GLOBS='**/generated/**,**/build/**' \
+./scripts/run-analyze.sh
+```
+
+**Büyük repo — küçük JSON (hotspot + dosya özeti, metod ağacı yok):**
+
+```bash
+REPORT_DETAIL=summary WORKERS=8 ./scripts/run-analyze.sh
+```
+
+**Doğrudan JAR:**
+
+```bash
+java -jar target/java-code-analyzer.jar \
+  --path=TARAMAK_ISTEDIGIN_PROJE \
+  --include='**/src/main/java/**' \
+  --exclude='**/generated/**' \
+  --workers=8 \
+  --detail=summary \
+  --output=analysis-output/standalone.json \
+  --markdown=analysis-output/parser-raporu.md
+```
+
+| Parametre | Anlamı |
+|-----------|--------|
+| `--workers` | Paralel parse (0 = otomatik) |
+| `--include` / `--exclude` | Glob filtre (path’e göre) |
+| `--detail=summary` | JSON/Markdown’da tüm metod listesi yok; hotspot kalır |
+| `--progress-every` | Log sıklığı (varsayılan 500) |
+
+---
+
 ## Eski Java 6 kaynak
 
 ```bash
@@ -145,4 +185,6 @@ LANGUAGE_LEVEL=JAVA_6 ./scripts/run-analyze.sh
 
 4. **Kopyalamıyorsun:** `mock-modules`, analyzer `src/`, `pom.xml` (parser için). PMD, analyzer’ın `config/` klasöründen çalışır.
 
-5. **Tarama:** Verdiğin codebase kökündeki `.java` dosyaları; `target`, `.git` atlanır.
+5. **Tarama:** Verdiğin codebase kökündeki **`.java` kaynak** dosyaları; `target`, `.git` atlanır. Rapor satırında ata zinciri: `modül › dosya › paket.Sınıf › metod(...)`.
+
+6. **`.jar` içindeki derlenmiş sınıflar** (sadece `.class`) **henüz taranmaz** — parser kaynak okur. Taramak için `src/main/java` veya kaynak zip gerekir. Klasördeki `java-code-analyzer.jar` **aracın kendisi**, taranacak servisler değil.

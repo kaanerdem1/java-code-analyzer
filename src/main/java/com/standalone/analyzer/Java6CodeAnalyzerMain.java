@@ -14,6 +14,10 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 
 import com.github.javaparser.ParserConfiguration;
+import com.standalone.analyzer.ScanOptions.ReportDetail;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Entry point.
@@ -60,7 +64,8 @@ public final class Java6CodeAnalyzerMain {
                     new AnalysisConsoleLogger.PathLabel(options.path().toAbsolutePath().normalize().toString()),
                     options.verbose());
 
-            AnalysisReport report = new ProjectAnalyzer(options.charset(), options.top(), options.languageLevel())
+            AnalysisReport report = new ProjectAnalyzer(
+                    options.charset(), options.top(), options.languageLevel(), options.scanOptions())
                     .analyze(options.path());
             writeJson(report, options);
             writeMarkdownIfRequested(report, options);
@@ -139,13 +144,18 @@ public final class Java6CodeAnalyzerMain {
                   --compact           Single-line JSON
                   --verbose           List every method with riskBreakdown on stderr
                   --markdown=<file>   Also write human-readable Markdown report (Türkçe)
+                  --workers=<n>       Parallel parse threads (0 = auto, default)
+                  --progress-every=<n> Log every N files (default 500)
+                  --include=<glob>    Only scan matching paths (repeatable / comma-separated)
+                  --exclude=<glob>    Skip matching paths (repeatable / comma-separated)
+                  --detail=full|summary  full = all methods in JSON; summary = hotspots + file totals
                   --help              Show this help
                 """);
     }
 
     private record Options(Path path, Path output, Path markdown, int top, Charset charset,
-                           ParserConfiguration.LanguageLevel languageLevel, boolean compact, boolean verbose,
-                           boolean help) {
+                           ParserConfiguration.LanguageLevel languageLevel, ScanOptions scanOptions,
+                           boolean compact, boolean verbose, boolean help) {
 
         static Options parse(String[] args) {
             Path path = null;
@@ -154,6 +164,11 @@ public final class Java6CodeAnalyzerMain {
             int top = DEFAULT_TOP;
             Charset charset = StandardCharsets.UTF_8;
             ParserConfiguration.LanguageLevel languageLevel = LanguageLevelOption.DEFAULT;
+            List<String> includes = new ArrayList<>();
+            List<String> excludes = new ArrayList<>();
+            int workers = 0;
+            int progressEvery = 0;
+            ReportDetail detail = ReportDetail.FULL;
             boolean compact = false;
             boolean verbose = false;
             boolean help = false;
@@ -177,6 +192,16 @@ public final class Java6CodeAnalyzerMain {
                     charset = Charset.forName(value(arg));
                 } else if (arg.startsWith("--language-level=")) {
                     languageLevel = LanguageLevelOption.parse(value(arg));
+                } else if (arg.startsWith("--workers=")) {
+                    workers = parsePositiveInt(value(arg), "--workers");
+                } else if (arg.startsWith("--progress-every=")) {
+                    progressEvery = parsePositiveInt(value(arg), "--progress-every");
+                } else if (arg.startsWith("--include=")) {
+                    includes.addAll(ScanOptionsParser.splitCsv(value(arg)));
+                } else if (arg.startsWith("--exclude=")) {
+                    excludes.addAll(ScanOptionsParser.splitCsv(value(arg)));
+                } else if (arg.startsWith("--detail=")) {
+                    detail = ScanOptionsParser.parseDetail(value(arg));
                 } else {
                     throw new IllegalArgumentException("Unknown argument: " + arg);
                 }
@@ -184,7 +209,22 @@ public final class Java6CodeAnalyzerMain {
             if (!help && path == null) {
                 throw new IllegalArgumentException("Missing required argument --path=<dir>");
             }
-            return new Options(path, output, markdown, top, charset, languageLevel, compact, verbose, help);
+            ScanOptions scanOptions =
+                    ScanOptionsParser.parse(includes, excludes, workers, progressEvery, detail);
+            return new Options(path, output, markdown, top, charset, languageLevel, scanOptions, compact, verbose,
+                    help);
+        }
+
+        private static int parsePositiveInt(String raw, String flag) {
+            try {
+                int parsed = Integer.parseInt(raw);
+                if (parsed < 0) {
+                    throw new IllegalArgumentException(flag + " must be >= 0");
+                }
+                return parsed;
+            } catch (NumberFormatException e) {
+                throw new IllegalArgumentException(flag + " must be an integer: " + raw);
+            }
         }
 
         private static String value(String arg) {

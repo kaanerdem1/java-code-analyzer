@@ -25,5 +25,7 @@ public record MethodMetric(
         double riskScore,
         RiskLevel riskLevel,
         List<String> riskFactors,
-        RiskBreakdown riskBreakdown) {
+        RiskBreakdown riskBreakdown,
+        String moduleRoot,
+        List<String> ancestorPath) {
 }

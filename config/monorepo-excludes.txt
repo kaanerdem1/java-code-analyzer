@@ -1,0 +1,8 @@
+# İsteğe bağlı ek exclude glob (--exclude ile aynı sözdizimi).
+# Örnek monorepo kullanımı:
+#   --exclude=**/generated/**
+#   --exclude=**/build/**
+#   --include=**/src/main/java/**
+#
+# Varsayılan olarak şu klasörler zaten atlanır:
+# .git, target, build, out, bin, dist, node_modules, .gradle, generated, ...

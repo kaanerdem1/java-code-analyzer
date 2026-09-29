@@ -16,6 +16,13 @@ SOURCE="$(cd "${SOURCE_DIR}" && pwd)"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 OUT_DIR="${OUTPUT_DIR:-${ROOT}/analysis-output}"
 LANG="${LANGUAGE_LEVEL:-JAVA_17}"
+WORKERS="${WORKERS:-0}"
+DETAIL="${REPORT_DETAIL:-full}"
+EXTRA=(--language-level="${LANG}")
+if [[ "${WORKERS}" != "0" ]]; then EXTRA+=(--workers="${WORKERS}"); fi
+if [[ "${DETAIL}" == "summary" ]]; then EXTRA+=(--detail=summary); fi
+if [[ -n "${INCLUDE_GLOBS:-}" ]]; then EXTRA+=(--include="${INCLUDE_GLOBS}"); fi
+if [[ -n "${EXCLUDE_GLOBS:-}" ]]; then EXTRA+=(--exclude="${EXCLUDE_GLOBS}"); fi
 
 mkdir -p "${OUT_DIR}"
 
@@ -39,10 +46,10 @@ MD="${OUT_DIR}/parser-raporu.md"
 
 java -jar "${JAR}" \
   --path="${SOURCE}" \
-  --language-level="${LANG}" \
   --output="${JSON}" \
   --markdown="${MD}" \
-  --top=20
+  --top=20 \
+  "${EXTRA[@]}"
 
 echo ""
 echo "Bitti."
