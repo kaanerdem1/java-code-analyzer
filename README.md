@@ -1,37 +1,5 @@
 # Java Code Analyzer
 
-Java kaynak kodunda metod karmaşıklığı ve risk raporu (Türkçe `.md`).
-
-**Kurulum:** JDK 17+, Maven.
-
-> **TARAMAK_ISTEDIGIN_PROJE** = Taramak istediğin codebase’in kök klasörü (içinde `src/main/java` olan Maven/Spring projesi).  
-> Örnek: `/Users/sen/mobil-backend` veya `../mobil-backend`
-
----
-
-## Hızlı komutlar (bu repo — mock demo)
-
-Proje kökünde, bir kez `mvn package`, sonra:
-
-```bash
-# Parser (standalone)
-./scripts/run-standalone-mock.sh
-
-# PMD
-./scripts/run-pmd-mock.sh
-
-# İkisi birden
-./scripts/run-both-mock.sh
-```
-
-Mock raporlar: `mock-modules/reports/parser-raporu.md` ve `pmd-raporu.md`
-
-Raporlar (`analysis-output/`, `mock-modules/reports/`) **repoda yok** — `.gitignore`; pull sonrası `mvn package` + script ile **yerelde otomatik oluşur**. JAR da repoda yok (`target/`) — bir kez `mvn package` gerekir.
-
----
-
-## Gerçek codebase — ne alıyoruz, nereye koyuyoruz?
-
 ### Seçenek 1 — Dosyaları **taramak istediğin projeye** kopyala (önerilen)
 
 Analyzer repoda **bir kez**:
@@ -42,10 +10,12 @@ mvn package
 
 **Kopyalanacaklar** (sadece 2 dosya; modül / kaynak kod yok):
 
-| Bu repodan | Taramak istediğin projeye |
-|------------|---------------------------|
-| `scripts/run-analyze.sh` | `scripts/run-analyze.sh` |
+
+| Bu repodan                      | Taramak istediğin projeye       |
+| ------------------------------- | ------------------------------- |
+| `scripts/run-analyze.sh`        | `scripts/run-analyze.sh`        |
 | `target/java-code-analyzer.jar` | `target/java-code-analyzer.jar` |
+
 
 PMD için Seçenek 2 (analyzer ayrı klasörde kalır).
 
@@ -84,9 +54,7 @@ cd ~/Desktop/java-code-analyzer
 
 **Çıktı:** `java-code-analyzer/analysis-output/parser-raporu.md` ve `pmd-raporu.md`
 
----
-
-## PMD komutları (kopyala-yapıştır)
+## PMD komutları 
 
 **Mock (bu repodaki örnek modüller):**
 
@@ -107,14 +75,6 @@ cd java-code-analyzer
 
 ```bash
 ./scripts/run-pmd-analyze.sh ~/projects/mobil-backend
-```
-
-PMD raporu: `analysis-output/pmd-raporu.md` (mock’ta: `mock-modules/reports/pmd-raporu.md`).
-
-Parser + PMD mock:
-
-```bash
-./scripts/run-both-mock.sh
 ```
 
 ---
@@ -150,12 +110,14 @@ java -jar target/java-code-analyzer.jar \
   --markdown=analysis-output/parser-raporu.md
 ```
 
-| Parametre | Anlamı |
-|-----------|--------|
-| `--workers` | Paralel parse (0 = otomatik) |
-| `--include` / `--exclude` | Glob filtre (path’e göre) |
-| `--detail=summary` | JSON/Markdown’da tüm metod listesi yok; hotspot kalır |
-| `--progress-every` | Log sıklığı (varsayılan 500) |
+
+| Parametre                 | Anlamı                                                |
+| ------------------------- | ----------------------------------------------------- |
+| `--workers`               | Paralel parse (0 = otomatik)                          |
+| `--include` / `--exclude` | Glob filtre (path’e göre)                             |
+| `--detail=summary`        | JSON/Markdown’da tüm metod listesi yok; hotspot kalır |
+| `--progress-every`        | Log sıklığı (varsayılan 500)                          |
+
 
 ---
 
@@ -167,23 +129,9 @@ LANGUAGE_LEVEL=JAVA_6 ./scripts/run-analyze.sh
 
 ---
 
-## `mvn package` ve JAR ne?
-
-| Kavram | Anlamı |
-|--------|--------|
-| **Kaynak kod** | `src/main/java/...` — geliştirdiğiniz analyzer |
-| **`mvn package`** | Maven derler + bağımlılıkları birleştirir → **`target/java-code-analyzer.jar`** |
-| **JAR** | Çift tıklanabilir program paketi; taramada sadece `java -jar ...` çalışır |
-
-**Ne zaman `mvn package`?** İlk kurulumda veya analyzer **kaynak kodunu değiştirdiğinizde**. JAR zaten varsa script **yeniden derlemez** (`run-analyze.sh` / `run-analyze.cmd`; mock script de aynı). Taranan Spring projenizin `mvn package`’ı ile karıştırmayın — o sizin uygulamanızı derler, analyzer’ı değil.
-
-Script “JAR yok, derleniyor” diyorsa: `target/java-code-analyzer.jar` silinmiş veya hiç üretilmemiş demektir.
-
----
-
 ## Windows
 
-CMD / PowerShell’de **`./scripts/run-analyze.sh` çalışmaz** (Bash script). Explorer veya VS Code `.sh` dosyasına tıklayınca “açmak için uygulama seç” çıkar; bu **terminalde çalıştırma değildir**, çıktı da oluşmaz.
+CMD / PowerShell’de `./scripts/run-analyze.sh` **çalışmaz** (Bash script). Explorer veya VS Code `.sh` dosyasına tıklayınca “açmak için uygulama seç” çıkar; bu **terminalde çalıştırma değildir**, çıktı da oluşmaz.
 
 **Yapılacaklar:**
 
@@ -207,34 +155,5 @@ java -jar target\java-code-analyzer.jar `
   --markdown=analysis-output\parser-raporu.md
 ```
 
-WSL veya **Git Bash** kullanıyorsan macOS/Linux ile aynı `./scripts/run-analyze.sh` komutları geçerlidir.
-
 ---
 
-## Sorun
-
-| Sorun | Çözüm |
-|-------|--------|
-| JAR yok | Analyzer repoda **bir kez** `mvn package` (JAR varken her taramada tekrar gerekmez) |
-| Eski tek dosya (`parser-raporu.md`) | `FIXED_REPORT=1 ./scripts/run-analyze.sh ...` veya Windows: `set FIXED_REPORT=1` |
-| Raporda anlamlı isim | `REPORT_TAG=mobil-backend ./scripts/run-analyze.sh ...` → `parser-mobil-backend-20250929-143052.md` |
-| Parse hataları | `LANGUAGE_LEVEL=JAVA_17 ./scripts/run-analyze.sh` |
-| Windows, `.sh` açılıyor / çıktı yok | `scripts\run-analyze.cmd` veya yukarıdaki `java -jar`; dosyaya çift tıklama |
-| `JAR yok` + `JAVA_HOME` / `mvn package` hata | JDK **17** kur; ortam değişkeni `JAVA_HOME` = JDK kökü (ör. `C:\Program Files\Java\jdk-17`); yeni terminal → `mvn package`. JAR hazırsa Maven gerekmez: Mac’te üretilen `target\java-code-analyzer.jar` kopyala |
-
----
-
-## EN BASIT ÖZET
-
-1. **Bu repoda denemek** → `mvn package` → `./scripts/run-standalone-mock.sh` → `mock-modules/reports/parser-raporu.md`
-
-2. **Taramak istediğin projede parser** → analyzer’da `mvn package` → **o projeye** `scripts/run-analyze.sh` + `target/java-code-analyzer.jar` kopyala → VS Code’da **o projeyi** aç → `./scripts/run-analyze.sh`
-
-3. **PMD mock** → `./scripts/run-pmd-mock.sh`  
-   **PMD gerçek codebase** → `cd java-code-analyzer` → `./scripts/run-pmd-analyze.sh TARAMAK_ISTEDIGIN_PROJE`
-
-4. **Kopyalamıyorsun:** `mock-modules`, analyzer `src/`, `pom.xml` (parser için). PMD, analyzer’ın `config/` klasöründen çalışır.
-
-5. **Tarama:** Verdiğin codebase kökündeki **`.java` kaynak** dosyaları; `target`, `.git` atlanır. Rapor satırında ata zinciri: `modül › dosya › paket.Sınıf › metod(...)`.
-
-6. **`.jar` içindeki derlenmiş sınıflar** (sadece `.class`) **henüz taranmaz** — parser kaynak okur. Taramak için `src/main/java` veya kaynak zip gerekir. Klasördeki `java-code-analyzer.jar` **aracın kendisi**, taranacak servisler değil.
