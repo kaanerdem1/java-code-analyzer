@@ -26,6 +26,8 @@ Proje kökünde, bir kez `mvn package`, sonra:
 
 Mock raporlar: `mock-modules/reports/parser-raporu.md` ve `pmd-raporu.md`
 
+Örnek çıktılar (mock + `analysis-output/`) repoda commit’lidir; GitHub’da taramadan önizleyebilirsiniz. JAR ve `target/` hâlâ `.gitignore`’dadır — bir kez `mvn package` gerekir.
+
 ---
 
 ## Gerçek codebase — ne alıyoruz, nereye koyuyoruz?
