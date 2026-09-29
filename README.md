@@ -167,12 +167,43 @@ LANGUAGE_LEVEL=JAVA_6 ./scripts/run-analyze.sh
 
 ---
 
+## Windows
+
+CMD / PowerShell’de **`./scripts/run-analyze.sh` çalışmaz** (Bash script). Explorer veya VS Code `.sh` dosyasına tıklayınca “açmak için uygulama seç” çıkar; bu **terminalde çalıştırma değildir**, çıktı da oluşmaz.
+
+**Yapılacaklar:**
+
+1. JDK 17+ ve Maven kurulu olsun; analyzer kökünde bir kez: `mvn package`
+2. **VS Code terminali:** sağ altta **Command Prompt** veya **PowerShell** (Git Bash seçtiysen `./scripts/run-analyze.sh` de olur)
+3. Analyzer kökünde:
+
+```bat
+scripts\run-analyze.cmd C:\yol\TARAMAK_ISTEDIGIN_PROJE
+```
+
+Çıktı: `analysis-output\parser-raporu.md` (analyzer repoda).
+
+**Alternatif — doğrudan JAR (PowerShell):**
+
+```powershell
+cd C:\yol\java-code-analyzer
+java -jar target\java-code-analyzer.jar `
+  --path="C:\yol\TARAMAK_ISTEDIGIN_PROJE" `
+  --output=analysis-output\standalone.json `
+  --markdown=analysis-output\parser-raporu.md
+```
+
+WSL veya **Git Bash** kullanıyorsan macOS/Linux ile aynı `./scripts/run-analyze.sh` komutları geçerlidir.
+
+---
+
 ## Sorun
 
 | Sorun | Çözüm |
 |-------|--------|
 | JAR yok | Analyzer repoda `mvn package` |
 | Parse hataları | `LANGUAGE_LEVEL=JAVA_17 ./scripts/run-analyze.sh` |
+| Windows, `.sh` açılıyor / çıktı yok | `scripts\run-analyze.cmd` veya yukarıdaki `java -jar`; dosyaya çift tıklama |
 
 ---
 
