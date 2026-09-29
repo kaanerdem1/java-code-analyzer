@@ -29,6 +29,8 @@ VS Code’da **taramak istediğin projeyi** aç → terminal proje kökünde:
 
 ---
 
+
+
 ### Seçenek 2 — Analyzer **ayrı klasörde** kalsın
 
 Taramak istediğin projeye dosya koyma. Terminal:
@@ -54,7 +56,7 @@ cd ~/Desktop/java-code-analyzer
 
 **Çıktı:** `java-code-analyzer/analysis-output/parser-raporu.md` ve `pmd-raporu.md`
 
-## PMD komutları 
+## PMD komutları
 
 **Mock (bu repodaki örnek modüller):**
 
@@ -78,6 +80,8 @@ cd java-code-analyzer
 ```
 
 ---
+
+
 
 ## Büyük monorepo / dev codebase
 
@@ -121,13 +125,31 @@ java -jar target/java-code-analyzer.jar \
 
 ---
 
-## Eski Java 6 kaynak
+
+
+## JDK ve `--language-level`
+
+**Aracı çalıştırmak:** JDK **17 veya üstü** (21, 25 dahil). JAR `release 17` ile derlenir; `mvn package` ve `java -jar` aynı JDK ile yapılır.
+
+**Taranan kaynak kodu:** Varsayılan parse seviyesi `JAVA_17` (`--language-level` / `LANGUAGE_LEVEL`). Taranan proje **Java 8 / 11 / 17** ise genelde ek ayar gerekmez.
+
+Daha yeni dil özellikleri (**21+**, **25 preview** vb.) parse hatası verirse seviyeyi JavaParser’ın desteklediği en yüksek uygun değere yükselt:
 
 ```bash
-LANGUAGE_LEVEL=JAVA_6 ./scripts/run-analyze.sh
+LANGUAGE_LEVEL=JAVA_21 ./scripts/run-analyze.sh /path/proje
 ```
 
+Eski **Java 6** kaynak (DWH vb.):
+
+```bash
+LANGUAGE_LEVEL=JAVA_6 ./scripts/run-analyze.sh /path/proje
+```
+
+Windows CMD: `set LANGUAGE_LEVEL=JAVA_21` sonra `scripts\run-analyze.cmd ...` (veya JAR’a `--language-level=JAVA_21`).
+
 ---
+
+
 
 ## Windows
 
