@@ -16,7 +16,8 @@ if not defined OUTPUT_DIR set "OUTPUT_DIR=%ROOT%\analysis-output"
 if not defined LANGUAGE_LEVEL set "LANGUAGE_LEVEL=JAVA_17"
 
 set "JAR=%ANALYZER_JAR%"
-if not defined JAR set "JAR=%ROOT%\target\java-code-analyzer.jar"
+if not defined JAR set "JAR=%ROOT%\dist\java-code-analyzer.jar"
+if not exist "%JAR%" if not defined ANALYZER_JAR set "JAR=%ROOT%\target\java-code-analyzer.jar"
 
 where java >nul 2>&1
 if errorlevel 1 (
@@ -44,10 +45,12 @@ if not exist "%JAR%" (
       exit /b 1
     )
     popd
-    set "JAR=%ROOT%\target\java-code-analyzer.jar"
+    if not exist "%ROOT%\dist" mkdir "%ROOT%\dist"
+    copy /y "%ROOT%\target\java-code-analyzer.jar" "%ROOT%\dist\java-code-analyzer.jar" >nul
+    set "JAR=%ROOT%\dist\java-code-analyzer.jar"
   ) else (
-    echo [HATA] java-code-analyzer.jar bulunamadi: %JAR%
-    echo        Once analyzer repoda: mvn package
+    echo [HATA] java-code-analyzer.jar bulunamadi: dist\ veya target\
+    echo        git pull ^(dist/java-code-analyzer.jar^) veya mvn package
     exit /b 1
   )
 )

@@ -14,6 +14,8 @@ set -euo pipefail
 
 # shellcheck source=report-name.sh
 source "$(cd "$(dirname "$0")" && pwd)/report-name.sh"
+# shellcheck source=resolve-jar.sh
+source "$(cd "$(dirname "$0")" && pwd)/resolve-jar.sh"
 
 # Argüman yoksa bulunduğunuz klasör taranır (proje kökünde çalıştırın).
 SOURCE_DIR="${1:-.}"
@@ -34,19 +36,11 @@ mkdir -p "${OUT_DIR}"
 assign_report_paths "${OUT_DIR}" "${SOURCE}"
 echo "[STANDALONE] Rapor dosyasi: $(basename "${MD}")"
 
-JAR="${ANALYZER_JAR:-${ROOT}/target/java-code-analyzer.jar}"
-if [[ ! -f "${JAR}" ]]; then
-  if [[ -f "${ROOT}/pom.xml" ]] && grep -q 'java-code-analyzer' "${ROOT}/pom.xml" 2>/dev/null; then
-    echo "[STANDALONE] JAR yok, analyzer derleniyor (mvn package)..."
-    mvn -q -f "${ROOT}/pom.xml" package
-    JAR="${ROOT}/target/java-code-analyzer.jar"
-  else
-    echo "[HATA] java-code-analyzer.jar bulunamadı: ${JAR}"
-    echo "       Gerçek Spring projenize sadece script kopyaladıysanız JAR'ı da koyun:"
-    echo "         target/java-code-analyzer.jar  (analyzer repoda mvn package ile üretin)"
-    echo "       veya ANALYZER_JAR=/tam/yol/java-code-analyzer.jar ./scripts/run-analyze.sh"
-    exit 1
-  fi
+if ! JAR="$(ensure_analyzer_jar "${ROOT}")"; then
+  echo "[HATA] java-code-analyzer.jar bulunamadi (dist/ veya target/)"
+  echo "       git pull veya dist/java-code-analyzer.jar kopyalayin"
+  echo "       ANALYZER_JAR=/tam/yol/java-code-analyzer.jar ./scripts/run-analyze.sh"
+  exit 1
 fi
 
 java -jar "${JAR}" \

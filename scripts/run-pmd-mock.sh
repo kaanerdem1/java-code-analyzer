@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# shellcheck source=resolve-jar.sh
+source "$(cd "$(dirname "$0")" && pwd)/resolve-jar.sh"
 MOCK="${ROOT}/mock-modules"
 REPORTS="${MOCK}/reports"
 TARGET="${MOCK}/target"
@@ -23,11 +25,9 @@ if [[ ! -f "${PMD_XML}" ]]; then
   exit 1
 fi
 
-if [[ ! -f "${ROOT}/target/java-code-analyzer.jar" ]]; then
-  mvn -q -f "${ROOT}/pom.xml" package
-fi
+JAR="$(ensure_analyzer_jar "${ROOT}")"
 
-java -cp "${ROOT}/target/java-code-analyzer.jar" com.standalone.analyzer.ReadableReportMain \
+java -cp "${JAR}" com.standalone.analyzer.ReadableReportMain \
   pmd "${PMD_XML}" "${MD}"
 
 VIOLATIONS="$(grep -c '<violation ' "${PMD_XML}" || true)"

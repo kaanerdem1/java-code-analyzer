@@ -5,6 +5,8 @@ set -euo pipefail
 SOURCE_DIR="${1:-.}"
 SOURCE="$(cd "${SOURCE_DIR}" && pwd)"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# shellcheck source=resolve-jar.sh
+source "$(cd "$(dirname "$0")" && pwd)/resolve-jar.sh"
 OUT_DIR="${OUTPUT_DIR:-${ROOT}/analysis-output}"
 MD="${OUT_DIR}/pmd-raporu.md"
 PMD_XML="${ROOT}/target/pmd-scan/pmd.xml"
@@ -19,11 +21,7 @@ if [[ ! -f "${PMD_XML}" ]]; then
   exit 1
 fi
 
-JAR="${ANALYZER_JAR:-${ROOT}/target/java-code-analyzer.jar}"
-if [[ ! -f "${JAR}" ]]; then
-  mvn -q -f "${ROOT}/pom.xml" package
-  JAR="${ROOT}/target/java-code-analyzer.jar"
-fi
+JAR="$(ensure_analyzer_jar "${ROOT}")"
 
 java -cp "${JAR}" com.standalone.analyzer.ReadableReportMain pmd "${PMD_XML}" "${MD}"
 

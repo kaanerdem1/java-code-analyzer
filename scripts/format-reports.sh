@@ -1,14 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# shellcheck source=resolve-jar.sh
+source "$(cd "$(dirname "$0")" && pwd)/resolve-jar.sh"
 REPORTS="${ROOT}/mock-modules/reports"
-JAR="${ROOT}/target/java-code-analyzer.jar"
+JAR="$(ensure_analyzer_jar "${ROOT}")"
 JSON="${ROOT}/mock-modules/target/analysis/standalone.json"
 PMD_XML="${ROOT}/mock-modules/target/pmd.xml"
-
-if [[ ! -f "${JAR}" ]]; then
-  mvn -q -f "${ROOT}/pom.xml" package
-fi
 
 CP=(java -cp "${JAR}" com.standalone.analyzer.ReadableReportMain)
 
