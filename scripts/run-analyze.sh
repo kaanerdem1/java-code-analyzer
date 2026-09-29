@@ -8,7 +8,12 @@
 # Ortam değişkenleri (isteğe bağlı):
 #   LANGUAGE_LEVEL=JAVA_11   (varsayılan JAVA_17; eski DWH için JAVA_6)
 #   OUTPUT_DIR=./my-reports  (varsayılan: ./analysis-output)
+#   FIXED_REPORT=1           (1 = parser-raporu.md üzerine yaz)
+#   REPORT_TAG=mobil-backend (dosya adı: parser-mobil-backend-YYYYMMDD-HHmmss.md)
 set -euo pipefail
+
+# shellcheck source=report-name.sh
+source "$(cd "$(dirname "$0")" && pwd)/report-name.sh"
 
 # Argüman yoksa bulunduğunuz klasör taranır (proje kökünde çalıştırın).
 SOURCE_DIR="${1:-.}"
@@ -26,6 +31,9 @@ if [[ -n "${EXCLUDE_GLOBS:-}" ]]; then EXTRA+=(--exclude="${EXCLUDE_GLOBS}"); fi
 
 mkdir -p "${OUT_DIR}"
 
+assign_report_paths "${OUT_DIR}" "${SOURCE}"
+echo "[STANDALONE] Rapor dosyasi: $(basename "${MD}")"
+
 JAR="${ANALYZER_JAR:-${ROOT}/target/java-code-analyzer.jar}"
 if [[ ! -f "${JAR}" ]]; then
   if [[ -f "${ROOT}/pom.xml" ]] && grep -q 'java-code-analyzer' "${ROOT}/pom.xml" 2>/dev/null; then
@@ -40,9 +48,6 @@ if [[ ! -f "${JAR}" ]]; then
     exit 1
   fi
 fi
-
-JSON="${OUT_DIR}/standalone.json"
-MD="${OUT_DIR}/parser-raporu.md"
 
 java -jar "${JAR}" \
   --path="${SOURCE}" \

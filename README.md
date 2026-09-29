@@ -26,7 +26,7 @@ Proje kökünde, bir kez `mvn package`, sonra:
 
 Mock raporlar: `mock-modules/reports/parser-raporu.md` ve `pmd-raporu.md`
 
-Örnek çıktılar (mock + `analysis-output/`) repoda commit’lidir; GitHub’da taramadan önizleyebilirsiniz. JAR ve `target/` hâlâ `.gitignore`’dadır — bir kez `mvn package` gerekir.
+Raporlar (`analysis-output/`, `mock-modules/reports/`) **repoda yok** — `.gitignore`; pull sonrası `mvn package` + script ile **yerelde otomatik oluşur**. JAR da repoda yok (`target/`) — bir kez `mvn package` gerekir.
 
 ---
 
@@ -55,7 +55,7 @@ VS Code’da **taramak istediğin projeyi** aç → terminal proje kökünde:
 ./scripts/run-analyze.sh
 ```
 
-**Çıktı:** `analysis-output/parser-raporu.md`
+**Çıktı:** `analysis-output/parser-{proje-adı}-YYYYMMDD-HHmmss.md` (proje adı = taranan klasörün son parçası; `REPORT_TAG=etiket` ile değiştirilir; eski tek dosya: `FIXED_REPORT=1`)
 
 ---
 
@@ -167,6 +167,20 @@ LANGUAGE_LEVEL=JAVA_6 ./scripts/run-analyze.sh
 
 ---
 
+## `mvn package` ve JAR ne?
+
+| Kavram | Anlamı |
+|--------|--------|
+| **Kaynak kod** | `src/main/java/...` — geliştirdiğiniz analyzer |
+| **`mvn package`** | Maven derler + bağımlılıkları birleştirir → **`target/java-code-analyzer.jar`** |
+| **JAR** | Çift tıklanabilir program paketi; taramada sadece `java -jar ...` çalışır |
+
+**Ne zaman `mvn package`?** İlk kurulumda veya analyzer **kaynak kodunu değiştirdiğinizde**. JAR zaten varsa script **yeniden derlemez** (`run-analyze.sh` / `run-analyze.cmd`; mock script de aynı). Taranan Spring projenizin `mvn package`’ı ile karıştırmayın — o sizin uygulamanızı derler, analyzer’ı değil.
+
+Script “JAR yok, derleniyor” diyorsa: `target/java-code-analyzer.jar` silinmiş veya hiç üretilmemiş demektir.
+
+---
+
 ## Windows
 
 CMD / PowerShell’de **`./scripts/run-analyze.sh` çalışmaz** (Bash script). Explorer veya VS Code `.sh` dosyasına tıklayınca “açmak için uygulama seç” çıkar; bu **terminalde çalıştırma değildir**, çıktı da oluşmaz.
@@ -201,9 +215,12 @@ WSL veya **Git Bash** kullanıyorsan macOS/Linux ile aynı `./scripts/run-analyz
 
 | Sorun | Çözüm |
 |-------|--------|
-| JAR yok | Analyzer repoda `mvn package` |
+| JAR yok | Analyzer repoda **bir kez** `mvn package` (JAR varken her taramada tekrar gerekmez) |
+| Eski tek dosya (`parser-raporu.md`) | `FIXED_REPORT=1 ./scripts/run-analyze.sh ...` veya Windows: `set FIXED_REPORT=1` |
+| Raporda anlamlı isim | `REPORT_TAG=mobil-backend ./scripts/run-analyze.sh ...` → `parser-mobil-backend-20250929-143052.md` |
 | Parse hataları | `LANGUAGE_LEVEL=JAVA_17 ./scripts/run-analyze.sh` |
 | Windows, `.sh` açılıyor / çıktı yok | `scripts\run-analyze.cmd` veya yukarıdaki `java -jar`; dosyaya çift tıklama |
+| `JAR yok` + `JAVA_HOME` / `mvn package` hata | JDK **17** kur; ortam değişkeni `JAVA_HOME` = JDK kökü (ör. `C:\Program Files\Java\jdk-17`); yeni terminal → `mvn package`. JAR hazırsa Maven gerekmez: Mac’te üretilen `target\java-code-analyzer.jar` kopyala |
 
 ---
 

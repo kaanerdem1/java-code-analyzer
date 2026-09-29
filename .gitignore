@@ -1,5 +1,7 @@
 target/
 mock-modules/target/
+analysis-output/
+mock-modules/reports/
 .idea/
 *.iml
 .DS_Store
