@@ -1,4 +1,5 @@
 target/
+dist/
 mock-modules/target/
 analysis-output/
 mock-modules/reports/

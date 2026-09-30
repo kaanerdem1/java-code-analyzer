@@ -2,32 +2,22 @@
 
 Kaynak kodda **metod karmaşıklığı ve risk** (CC, LOC, nesting, hotspot, Türkçe Markdown/JSON). **Call-graph / servis→metod çağrı zinciri bu repoda yok** — etki analizi ve lineage ayrı uygulamada.
 
-### Hazır JAR (`dist/`)
+### JAR (`target/` — repoda yok)
 
-Repoda **`dist/java-code-analyzer.jar`** vardır. **`git pull`** → makinede **JDK 17+** → Maven **gerekmez**:
-
-```bat
-scripts\run-analyze.cmd C:\yol\TARAMAK_ISTEDIGIN_PROJE
-```
-
-```bash
-./scripts/run-analyze.sh /path/TARAMAK_ISTEDIGIN_PROJE
-```
-
-Analyzer kaynağını değiştiren geliştirici: `./scripts/sync-dist-jar.sh` → commit + push.
+Analyzer kökünde **bir kez** `mvn package` → `target/java-code-analyzer.jar`. Script JAR yoksa analyzer repodaysa otomatik derler. **JDK 17+** gerekir.
 
 ### Seçenek 1 — Dosyaları **taramak istediğin projeye** kopyala (önerilen)
 
 **Kopyalanacaklar:**
 
 
-| Bu repodan                    | Taramak istediğin projeye     |
-| ----------------------------- | ----------------------------- |
-| `scripts/run-analyze.sh`      | `scripts/run-analyze.sh`      |
-| `dist/java-code-analyzer.jar` | `dist/java-code-analyzer.jar` |
+| Bu repodan                      | Taramak istediğin projeye       |
+| ------------------------------- | ------------------------------- |
+| `scripts/run-analyze.sh`        | `scripts/run-analyze.sh`        |
+| `target/java-code-analyzer.jar` | `target/java-code-analyzer.jar` |
+
 
 Windows: `scripts/run-analyze.cmd` + aynı JAR.
-
 
 PMD için Seçenek 2 (analyzer ayrı klasörde kalır).
 
@@ -191,3 +181,4 @@ java -jar target\java-code-analyzer.jar `
 
 ---
 
+.\scripts\run-analyze.cmd C:\yol\TARAMAK_ISTEDIGIN_PROJE
