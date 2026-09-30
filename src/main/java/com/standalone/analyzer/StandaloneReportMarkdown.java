@@ -106,8 +106,8 @@ final class StandaloneReportMarkdown {
                                     AnalysisReport.Summary s) throws IOException {
         out.write("# Parser analiz raporu\n\n");
         out.write("Bu rapor **Java kaynak kodunu** tarayıp her **metod** için karmaşıklık ve **teknik risk** özetler.\n\n");
-        out.write("Tablolarda **M1**, **M2** … kodları ve kısa metod adı görünür; tam yol ");
-        out.write("(modül › dosya › sınıf › metod) rapor sonunda **Metod ata zincirleri** bölümündedir.\n\n");
+        out.write("Ana tablolarda yalnızca **metod adı** (`Sınıf.metod(...)`) görünür; tam hiyerarşi yolu ");
+        out.write("(modül › dosya › sınıf › metod) **Metod hiyerarşi yolları** bölümünde düz satır listesindedir.\n\n");
         if (riskModel != null) {
             out.write(describeRiskModelTr(riskModel) + "\n\n");
         }
@@ -183,15 +183,15 @@ final class StandaloneReportMarkdown {
                                             List<RiskHotspot> hotspots, AncestorIndex ancestors)
             throws IOException {
         out.write("## En riskli metodlar\n\n");
-        out.write("| Sıra | Konum | Risk | Seviye | Dallanma | Satır | İç içe | Okunabilirlik | FOUT† | Nedeni | Kaynak satırı |\n");
+        out.write("| Sıra | Metod | Risk | Seviye | Dallanma | Satır | İç içe | Okunabilirlik | FOUT† | Nedeni | Kaynak satırı |\n");
         out.write("|-----:|-------|-----:|--------|--------:|------:|-------:|--------------:|------:|--------|-------------:|\n");
         int i = 1;
         for (RiskHotspot h : hotspots) {
             String chain = MethodHierarchy.breadcrumb(MethodHierarchy.ancestorPath(
                     moduleRoots, h.file(), h.packageName(), h.className(), h.method()));
-            String compact = MethodHierarchy.compactMethodLabel(h.packageName(), h.className(), h.method());
-            String ref = ancestors.register(chain);
-            out.write("| " + i++ + " | " + formatTableLocation(ref, compact) + " | "
+            String shortLabel = MethodHierarchy.shortMethodLabel(h.className(), h.method());
+            ancestors.register(chain, shortLabel);
+            out.write("| " + i++ + " | " + formatTableMethodName(shortLabel) + " | "
                     + fmt(h.riskScore()) + " | " + levelTr(h.riskLevel()) + " | "
                     + h.cyclomaticComplexity() + " | " + h.codeLines() + " | " + h.maxNestingDepth()
                     + " | " + h.cognitiveComplexity() + " | " + h.outboundDistinctCalls() + " | "
@@ -223,7 +223,7 @@ final class StandaloneReportMarkdown {
         } else {
             out.write("Sütunlar: **Okunabilirlik** ham sayı; **FOUT†** katalog (skora girmez); **Nedeni** risk boyutu; ");
             out.write("son sütun skora giren alt puanlar (dallanma / uzunluk / iç içe / parametre / okunabilirlik).\n\n");
-            out.write("| Risk | Seviye | Konum | Dallanma | Satır | İç içe | Okunabilirlik | FOUT† | Nedeni | Dev? | Alt puanlar (5 ölçü) |\n");
+            out.write("| Risk | Seviye | Metod | Dallanma | Satır | İç içe | Okunabilirlik | FOUT† | Nedeni | Dev? | Alt puanlar (5 ölçü) |\n");
             out.write("|-----:|--------|-------|--------:|------:|-------:|--------------:|----------:|--------|:----:|---------------------|\n");
         }
     }
@@ -236,7 +236,7 @@ final class StandaloneReportMarkdown {
         String cogSub = b == null ? "—" : fmt(b.cognitiveSubScore());
         String subsExtended = subs + " / " + cogSub;
         out.write("| " + fmt(r.score()) + " | " + levelTr(r.level()) + " | "
-                + formatTableLocation(r.ref(), r.compactLabel()) + " | "
+                + formatTableMethodName(r.shortLabel()) + " | "
                 + r.cc() + " | " + r.loc() + " | " + r.nest() + " | "
                 + r.cogCount() + " | " + r.foutCount() + " | "
                 + escapeCell(RiskBreakdownUtil.driverLabelTr(r.dominantDriver())) + " | "
@@ -257,10 +257,9 @@ final class StandaloneReportMarkdown {
                     }
                     String chain = MethodHierarchy.breadcrumb(MethodHierarchy.ancestorPath(
                             moduleRoots, file.path(), file.packageName(), type.name(), m.signature()));
-                    String ref = ancestors.register(chain);
-                    String compact = MethodHierarchy.compactMethodLabel(
-                            file.packageName(), type.name(), m.signature());
-                    rows.add(new MethodRow(ref, compact, m.riskScore(), m.riskLevel(),
+                    String shortLabel = MethodHierarchy.shortMethodLabel(type.name(), m.signature());
+                    ancestors.register(chain, shortLabel);
+                    rows.add(new MethodRow(shortLabel, m.riskScore(), m.riskLevel(),
                             m.cyclomaticComplexity(), m.codeLines(), m.maxNestingDepth(),
                             m.cognitiveComplexity(), m.outboundDistinctCalls(),
                             RiskBreakdownUtil.dominantDriver(m.riskBreakdown()), m.godMethod(),
@@ -338,10 +337,10 @@ final class StandaloneReportMarkdown {
             }
             String chain = MethodHierarchy.breadcrumb(MethodHierarchy.ancestorPath(
                     moduleRoots, path, packageName, className, m.signature));
-            String ref = ancestors.register(chain);
-            String compact = MethodHierarchy.compactMethodLabel(packageName, className, m.signature);
+            String shortLabel = MethodHierarchy.shortMethodLabel(className, m.signature);
+            ancestors.register(chain, shortLabel);
             String driver = RiskBreakdownUtil.dominantDriver(m.breakdown);
-            rows.add(new MethodRow(ref, compact, m.score, m.level, m.cc, m.loc, m.nest,
+            rows.add(new MethodRow(shortLabel, m.score, m.level, m.cc, m.loc, m.nest,
                     m.cogCount, m.foutCount, driver, m.god, m.breakdown));
         }
         reader.endArray();
@@ -725,42 +724,42 @@ final class StandaloneReportMarkdown {
         return s.replace("|", "\\|");
     }
 
-    private static String formatTableLocation(String ref, String compactLabel) {
-        return "**" + ref + "** · `" + escapeCell(compactLabel) + "`";
+    private static String formatTableMethodName(String shortLabel) {
+        return "`" + escapeCell(shortLabel) + "`";
     }
 
     private static void writeAncestorAppendix(Writer out, AncestorIndex ancestors) throws IOException {
         if (ancestors == null || ancestors.isEmpty()) {
             return;
         }
-        out.write("## Metod ata zincirleri\n\n");
-        out.write("Tablolardaki kodların tam konumu (`modül › dosya › sınıf › metod`):\n\n");
-        out.write("| Kod | Tam ata zinciri |\n|-----|-----------------|\n");
-        for (Map.Entry<String, String> e : ancestors.entriesInOrder()) {
-            out.write("| **" + e.getKey() + "** | `" + escapeCell(e.getValue()) + "` |\n");
+        out.write("## Metod hiyerarşi yolları\n\n");
+        out.write("Ana tablolardaki metodların tam konumu (`modül › dosya › sınıf › metod`). ");
+        out.write("Aynı metod adı birden fazla yerde geçiyorsa satırdaki **M** kodu ile ayırt edin:\n\n");
+        for (AncestorIndex.Entry e : ancestors.entriesInOrder()) {
+            out.write("- **" + e.ref() + "** · `" + escapeCell(e.shortLabel()) + "` — `"
+                    + escapeCell(e.breadcrumb()) + "`\n");
         }
         out.write("\n");
     }
 
-    /** Tam breadcrumb → M1, M2 … (ek bölümde listelenir). */
+    /** Tam breadcrumb → M1, M2 … (düz satır listesinde). */
     private static final class AncestorIndex {
-        private final LinkedHashMap<String, String> breadcrumbToRef = new LinkedHashMap<>();
+        private final LinkedHashMap<String, Entry> breadcrumbToEntry = new LinkedHashMap<>();
         private int next = 1;
 
-        String register(String breadcrumb) {
-            return breadcrumbToRef.computeIfAbsent(breadcrumb, k -> "M" + (next++));
+        void register(String breadcrumb, String shortLabel) {
+            breadcrumbToEntry.computeIfAbsent(breadcrumb, k -> new Entry("M" + (next++), shortLabel, breadcrumb));
         }
 
         boolean isEmpty() {
-            return breadcrumbToRef.isEmpty();
+            return breadcrumbToEntry.isEmpty();
         }
 
-        List<Map.Entry<String, String>> entriesInOrder() {
-            List<Map.Entry<String, String>> list = new ArrayList<>(breadcrumbToRef.size());
-            for (Map.Entry<String, String> e : breadcrumbToRef.entrySet()) {
-                list.add(Map.entry(e.getValue(), e.getKey()));
-            }
-            return list;
+        List<Entry> entriesInOrder() {
+            return List.copyOf(breadcrumbToEntry.values());
+        }
+
+        private record Entry(String ref, String shortLabel, String breadcrumb) {
         }
     }
 
@@ -773,7 +772,7 @@ final class StandaloneReportMarkdown {
     }
 
     private record MethodRow(
-            String ref, String compactLabel, double score, RiskLevel level,
+            String shortLabel, double score, RiskLevel level,
             int cc, int loc, int nest, int cogCount, int foutCount, String dominantDriver,
             boolean god, RiskBreakdown breakdown) {
     }

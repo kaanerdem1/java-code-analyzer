@@ -47,8 +47,13 @@ final class MethodHierarchy {
         return String.join(" › ", ancestorPath);
     }
 
-    /** Tablo hücresi: tam nitelikli sınıf + metod imzası (dosya/modül yok). */
+    /** Tam nitelikli sınıf + metod imzası (JSON / arama). */
     static String compactMethodLabel(String packageName, String className, String methodSignature) {
         return qualifiedClass(packageName, className) + "." + methodSignature;
+    }
+
+    /** Ana tablo: sınıf (servis) adı + metod imzası — paket ve dosya yolu yok. */
+    static String shortMethodLabel(String className, String methodSignature) {
+        return className + "." + methodSignature;
     }
 }
