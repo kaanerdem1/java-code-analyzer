@@ -16,15 +16,16 @@ final class AnalysisConsoleLogger {
     private AnalysisConsoleLogger() {
     }
 
-    static void logRunHeader(PathLabel path, boolean verbose) {
+    static void logRunHeader(PathLabel path, boolean verbose, RiskCalculator riskCalculator) {
         PrintStream err = System.err;
+        AnalysisReport.RiskModel model = riskCalculator.buildRiskModel();
         err.println(TAG + " ========================================");
         err.println(TAG + " Standalone Java complexity & risk scan");
         err.println(TAG + " Target: " + path.value());
-        err.println(TAG + " Risk model: v1 (0.0–1.0 composite score)");
-        err.println(TAG + " Weights: CC=40% LOC=20% Nesting=25% Params=15%");
-        err.println(TAG + " Formula: final = min(bandCap, max(subScores) + 0.15 * weightedBlend)");
-        err.println(TAG + " Thresholds — CC: 10/15/30 | LOC: 50/100/200 | Nest: 3/4/8 | Params: 5/7/12");
+        err.println(TAG + " Risk model: " + model.version() + " (0.0–1.0 composite score)");
+        err.println(TAG + " " + model.formula());
+        err.println(TAG + " " + RiskCalculator.consoleModelLine(riskCalculator));
+        err.println(TAG + " Thresholds (dikkat/yüksek/kritik): " + formatThresholds(model));
         err.println(TAG + " Verbose method listing: " + (verbose ? "ON" : "OFF (use --verbose)"));
         err.println(TAG + " JSON schema: riskBreakdown per method when score is computed");
         err.println(TAG + " ========================================");
@@ -40,7 +41,10 @@ final class AnalysisConsoleLogger {
                 + " totalCodeLines=" + s.totalCodeLines());
         err.println(TAG + " CC: avg=" + s.averageCyclomaticComplexity() + " max=" + s.maxCyclomaticComplexity());
         err.println(TAG + " God methods=" + s.godMethodCount());
-        err.println(TAG + " Project risk: score=" + s.projectRiskScore() + " level=" + s.projectRiskLevel());
+        err.println(TAG + " Project risk: score=" + s.projectRiskScore() + " level=" + s.projectRiskLevel()
+                + " | tail p95=" + s.methodRiskScoreP95() + " p99=" + s.methodRiskScoreP99());
+        err.println(TAG + " High+critical LOC share=" + s.highPlusCriticalLocRatio()
+                + " critical/KLOC=" + s.criticalMethodsPerKloc());
         err.println(TAG + " Distribution: LOW=" + s.methodRiskDistribution().get(RiskLevel.LOW)
                 + " MEDIUM=" + s.methodRiskDistribution().get(RiskLevel.MEDIUM)
                 + " HIGH=" + s.methodRiskDistribution().get(RiskLevel.HIGH)
@@ -76,9 +80,18 @@ final class AnalysisConsoleLogger {
             for (ClassMetric type : file.classes()) {
                 for (MethodMetric m : type.methods()) {
                     RiskBreakdown b = m.riskBreakdown();
-                    err.printf(Locale.US, TAG + " %s | %s.%s | score=%.3f %s | CC=%d LOC=%d nest=%d params=%d%n",
+                    err.printf(Locale.US, TAG + " %s | %s.%s | score=%.3f %s | CC=%d cog=%d LOC=%d nest=%d exit=%d catch=%d sw=%d fout=%d lam=%d tryNest=%d locals=%d chain=%d params=%d%n",
                             file.path(), type.name(), m.signature(), m.riskScore(), m.riskLevel(),
-                            m.cyclomaticComplexity(), m.codeLines(), m.maxNestingDepth(), m.parameterCount());
+                            m.cyclomaticComplexity(), m.cognitiveComplexity(), m.codeLines(),
+                            m.maxNestingDepth(), m.exitPoints(), m.catchClauses(), m.switchCases(),
+                            m.outboundDistinctCalls(), m.lambdaCount(), m.maxTryNestingDepth(),
+                            m.localVariableCount(), m.maxMethodCallChainLength(), m.parameterCount());
+                    if (m.emptyCatchBlocks() > 0 || m.catchExceptionOrThrowable() > 0
+                            || m.catchWithOnlyPrintStackTrace() > 0) {
+                        err.printf(Locale.US, TAG + "     catch-quality: empty=%d broad=%d printStackTraceOnly=%d%n",
+                                m.emptyCatchBlocks(), m.catchExceptionOrThrowable(),
+                                m.catchWithOnlyPrintStackTrace());
+                    }
                     if (b != null) {
                         err.printf(Locale.US, TAG + "     sub: cc=%.3f loc=%.3f nest=%.3f par=%.3f dom=%.3f blend=%.3f bonus=%.3f final=%.3f%n",
                                 b.ccSubScore(), b.locSubScore(), b.nestingSubScore(), b.paramsSubScore(),
@@ -101,6 +114,18 @@ final class AnalysisConsoleLogger {
         for (AnalysisReport.FileError e : errors) {
             err.println(TAG + " " + e.file() + ": " + e.message());
         }
+    }
+
+    private static String formatThresholds(AnalysisReport.RiskModel model) {
+        StringBuilder sb = new StringBuilder();
+        model.thresholds().forEach((id, triple) -> {
+            if (sb.length() > 0) {
+                sb.append(" | ");
+            }
+            sb.append(id).append(": ").append(triple.get(0)).append('/')
+                    .append(triple.get(1)).append('/').append(triple.get(2));
+        });
+        return sb.toString();
     }
 
     record PathLabel(String value) {

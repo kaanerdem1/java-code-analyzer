@@ -8,7 +8,8 @@ public record ScanOptions(
         int progressEvery,
         List<String> includeGlobs,
         List<String> excludeGlobs,
-        ReportDetail reportDetail) {
+        ReportDetail reportDetail,
+        boolean applyDefaultIgnoredDirectories) {
 
     public enum ReportDetail {
         /** Dosya → sınıf → metod tam ağaç (varsayılan). */
@@ -20,7 +21,7 @@ public record ScanOptions(
     public static ScanOptions defaults() {
         int cpus = Runtime.getRuntime().availableProcessors();
         int workers = Math.max(1, Math.min(cpus, cpus <= 4 ? cpus : cpus - 1));
-        return new ScanOptions(workers, 500, List.of(), List.of(), ReportDetail.FULL);
+        return new ScanOptions(workers, 500, List.of(), List.of(), ReportDetail.FULL, true);
     }
 
     public ScanOptions {

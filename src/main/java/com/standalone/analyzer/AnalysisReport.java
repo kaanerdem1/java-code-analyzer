@@ -33,9 +33,16 @@ public record AnalysisReport(
             double averageCyclomaticComplexity,
             int maxCyclomaticComplexity,
             int godMethodCount,
+            /** LOC-ağırlıklı ortalama metod risk skoru (büyük repoda kuyruk riskini gizleyebilir). */
             double projectRiskScore,
             RiskLevel projectRiskLevel,
-            Map<RiskLevel, Long> methodRiskDistribution) {
+            Map<RiskLevel, Long> methodRiskDistribution,
+            /** YÜKSEK+KRİTİK metodların metod-LOC içindeki payı (0–1). */
+            double highPlusCriticalLocRatio,
+            /** KRİTİK metod sayısı / KLOC. */
+            double criticalMethodsPerKloc,
+            double methodRiskScoreP95,
+            double methodRiskScoreP99) {
     }
 
     public record FileMetric(
@@ -59,7 +66,9 @@ public record AnalysisReport(
             int startLine,
             int endLine,
             int methodCount,
+            int publicMethodCount,
             int codeLines,
+            int efferentCouplingProxy,
             int weightedMethodComplexity,
             int maxMethodComplexity,
             double averageMethodComplexity,
@@ -71,6 +80,7 @@ public record AnalysisReport(
 
     public record RiskHotspot(
             String file,
+            String packageName,
             String className,
             String method,
             int startLine,
@@ -80,9 +90,10 @@ public record AnalysisReport(
             int codeLines,
             int maxNestingDepth,
             int parameterCount,
-            List<String> riskFactors,
-            String moduleRoot,
-            List<String> ancestorPath) {
+            int cognitiveComplexity,
+            int outboundDistinctCalls,
+            String dominantDriver,
+            List<String> riskFactors) {
     }
 
     public record FileError(String file, String message) {

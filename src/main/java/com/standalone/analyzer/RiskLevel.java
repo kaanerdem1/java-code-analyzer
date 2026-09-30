@@ -1,14 +1,13 @@
 package com.standalone.analyzer;
 
 /**
- * Risk bands on the normalised 0.0 - 1.0 score scale.
- * LOW [0.0, 0.3) - MEDIUM [0.3, 0.5) - HIGH [0.5, 0.8) - CRITICAL [0.8, 1.0]
+ * Risk bands on the 0–100 score scale (see {@link RiskScoreScale}).
  */
 public enum RiskLevel {
-    LOW(0.0, 0.3),
-    MEDIUM(0.3, 0.5),
-    HIGH(0.5, 0.8),
-    CRITICAL(0.8, 1.0);
+    LOW(0.0, 30.0),
+    MEDIUM(30.0, 50.0),
+    HIGH(50.0, 80.0),
+    CRITICAL(80.0, 100.0);
 
     private final double lowerBound;
     private final double upperBound;
@@ -25,8 +24,8 @@ public enum RiskLevel {
         return LOW;
     }
 
-    /** Highest score (3 decimal precision) that still belongs to this band. */
-    public double maxScore() {
-        return this == CRITICAL ? upperBound : upperBound - 0.001;
+    /** Upper display bound for this band (100 for CRITICAL; no score flattening). */
+    public double bandUpper() {
+        return upperBound;
     }
 }

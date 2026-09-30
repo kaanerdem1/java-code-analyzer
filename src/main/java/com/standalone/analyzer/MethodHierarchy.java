@@ -10,6 +10,13 @@ final class MethodHierarchy {
     }
 
     static String moduleRoot(String relativeFilePath) {
+        return moduleRoot(null, relativeFilePath);
+    }
+
+    static String moduleRoot(ModuleRootIndex index, String relativeFilePath) {
+        if (index != null) {
+            return index.moduleRoot(relativeFilePath);
+        }
         if (relativeFilePath == null || relativeFilePath.isEmpty()) {
             return "";
         }
@@ -23,8 +30,13 @@ final class MethodHierarchy {
 
     static List<String> ancestorPath(String relativeFilePath, String packageName, String className,
                                        String methodSignature) {
+        return ancestorPath(null, relativeFilePath, packageName, className, methodSignature);
+    }
+
+    static List<String> ancestorPath(ModuleRootIndex index, String relativeFilePath, String packageName,
+                                   String className, String methodSignature) {
         List<String> chain = new ArrayList<>(4);
-        chain.add(moduleRoot(relativeFilePath));
+        chain.add(moduleRoot(index, relativeFilePath));
         chain.add(relativeFilePath);
         chain.add(qualifiedClass(packageName, className));
         chain.add(methodSignature);
@@ -33,5 +45,10 @@ final class MethodHierarchy {
 
     static String breadcrumb(List<String> ancestorPath) {
         return String.join(" › ", ancestorPath);
+    }
+
+    /** Tablo hücresi: tam nitelikli sınıf + metod imzası (dosya/modül yok). */
+    static String compactMethodLabel(String packageName, String className, String methodSignature) {
+        return qualifiedClass(packageName, className) + "." + methodSignature;
     }
 }

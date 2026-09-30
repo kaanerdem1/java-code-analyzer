@@ -12,8 +12,11 @@ class ProjectAnalyzerDiscoveryTest {
     @Test
     void skipsTargetButNotPackageNamedBuild() {
         Path root = Path.of("/repo");
-        assertTrue(ProjectAnalyzer.shouldSkipAsBuildOutputDirectory(root, root.resolve("target")));
+        assertTrue(ProjectAnalyzer.shouldSkipAsBuildOutputDirectory(root, root.resolve("target"), true));
         assertFalse(ProjectAnalyzer.shouldSkipAsBuildOutputDirectory(
-                root, root.resolve("src/main/java/com/acme/build")));
+                root, root.resolve("src/main/java/com/acme/build"), true));
+        assertFalse(ProjectAnalyzer.shouldSkipAsBuildOutputDirectory(
+                root, root.resolve("nested/deep/target"), true));
+        assertFalse(ProjectAnalyzer.shouldSkipAsBuildOutputDirectory(root, root.resolve("target"), false));
     }
 }

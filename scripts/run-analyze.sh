@@ -10,6 +10,8 @@
 #   OUTPUT_DIR=./my-reports  (varsayılan: ./analysis-output)
 #   FIXED_REPORT=1           (1 = parser-raporu.md üzerine yaz)
 #   REPORT_TAG=mobil-backend (dosya adı: parser-mobil-backend-YYYYMMDD-HHmmss.md)
+#   STANDALONE_RISK_PROFILE=enterprise-java (varsayılan enterprise-java)
+#   EXCLUDE_GLOBS=**/src/test/** (varsayılan; test kaynaklarını hariç tutar — tam repo tarayınca fout şişmesin)
 set -euo pipefail
 
 # shellcheck source=report-name.sh
@@ -29,7 +31,8 @@ EXTRA=(--language-level="${LANG}")
 if [[ "${WORKERS}" != "0" ]]; then EXTRA+=(--workers="${WORKERS}"); fi
 if [[ "${DETAIL}" == "summary" ]]; then EXTRA+=(--detail=summary); fi
 if [[ -n "${INCLUDE_GLOBS:-}" ]]; then EXTRA+=(--include="${INCLUDE_GLOBS}"); fi
-if [[ -n "${EXCLUDE_GLOBS:-}" ]]; then EXTRA+=(--exclude="${EXCLUDE_GLOBS}"); fi
+EXCLUDE_GLOBS="${EXCLUDE_GLOBS:-**/src/test/**}"
+if [[ -n "${EXCLUDE_GLOBS}" ]]; then EXTRA+=(--exclude="${EXCLUDE_GLOBS}"); fi
 
 mkdir -p "${OUT_DIR}"
 
@@ -43,11 +46,16 @@ if ! JAR="$(ensure_analyzer_jar "${ROOT}")"; then
   exit 1
 fi
 
+RISK_PROFILE="${STANDALONE_RISK_PROFILE:-enterprise-java}"
+RISK_ARGS=()
+if [[ -n "${RISK_PROFILE}" ]]; then RISK_ARGS=(--risk-profile="${RISK_PROFILE}"); fi
+
 java -jar "${JAR}" \
   --path="${SOURCE}" \
   --output="${JSON}" \
   --markdown="${MD}" \
   --top=20 \
+  "${RISK_ARGS[@]}" \
   "${EXTRA[@]}"
 
 echo ""

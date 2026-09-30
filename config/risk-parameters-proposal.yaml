@@ -1,0 +1,222 @@
+# Risk modeli — konfig + sade dil. Runtime: --risk-profile=enterprise-java (v2); yoksa legacy v1.
+# Okuma rehberi: scripts/risk-model-plain-language.md
+
+version: proposal-2026-03
+profile_default: enterprise-java
+
+# ---------------------------------------------------------------------------
+# Skor nasıl birleşir? (metod)
+# ---------------------------------------------------------------------------
+explainable_model:
+  summary_tr: >
+    Her metod için dört boyut ölçülür. Her boyut 0–1 alt skor üretir.
+    En yüksek alt skor metodun ana riskidir; diğerleri skora %15 oranında karışır.
+  steps_tr:
+    - id: measure
+      text: "CC, kod satırı, iç içe derinlik ve parametre sayısını say."
+    - id: subscores
+      text: "Her boyutu dikkat / yüksek / kritik eşiklerine göre 0–1 alt skora çevir."
+    - id: dominant
+      text: "Dört alt skordan en büyüğünü seç; risk seviyesi önce buna göre etiketlenir."
+    - id: blend
+      text: "Ağırlıklı ortalama alt skor hesapla; final = dominant + (karışım_oranı × blend), seviye tavanına sıkıştır."
+  level_bands_tr:
+    DÜŞÜK: "Skor 0 – 29,999 — tipik getter, delegasyon, basit validasyon"
+    ORTA: "30 – 49,999 — refactor planlanabilir; code review'da not düş"
+    YÜKSEK: "50 – 79,999 — test ve sadeleştirme öncelikli"
+    KRİTİK: "80 – 100 — parçala / acil müdahale adayı"
+  score_scale: 100
+  score_mix:
+    dominant_weight: 0.58
+    blend_weight: 0.42
+    note_tr: >
+      final = 58% * max(17 alt skor) + 42% * ağırlıklı ortalama + ince ayırıcı (0–100, 3 ondalık).
+      Aynı ham metrik vektörü olmadıkça iki metodun skoru çakışmaz.
+  blend:
+    ratio: 0.42
+    note_tr: "Geriye dönük: score_mix yoksa dominant=1-ratio, blend=ratio."
+
+# ---------------------------------------------------------------------------
+# Boyut şablonu (profiller bunu override eder)
+# ---------------------------------------------------------------------------
+dimension_template:
+  branching:
+    id: branching
+    field: cyclomaticComplexity
+    label_tr: "Dallanma karmaşıklığı (CC)"
+    measures_tr: "if, else, for, while, catch, &&, ||, switch kolu vb. karar noktaları"
+    service_examples_tr:
+      - "Tek if'li facade metodu → düşük"
+      - "Kural motoru / çok dallı ETL → yüksek"
+    threshold_labels: [dikkat, yuksek, kritik]
+    subscore_meaning_tr:
+      below_dikkat: "Alt skor ~0–0.29; ek risk sayılmaz"
+      dikkat_to_yuksek: "Alt skor ~0.30–0.49; Sonar/PMD 'complexity' uyarısına denk gelir"
+      yuksek_to_kritik: "Alt skor ~0.50–0.79; refactor backlog"
+      above_kritik: "Alt skor 0.80+; metod bölünmeli"
+  length:
+    id: length
+    field: codeLines
+    label_tr: "Metod kod satırı (LOC)"
+    measures_tr: "Yorum ve boş satır hariç gerçek kod satırları"
+    service_examples_tr:
+      - "15–20 satırlık servis metodu → mock'ta tipik"
+      - "100+ satır tek metod → god-method adayı"
+    threshold_labels: [dikkat, yuksek, kritik]
+  nesting:
+    id: nesting
+    field: maxNestingDepth
+    label_tr: "İç içe blok derinliği"
+    measures_tr: "if/for/while/try/switch iç içe kaç kat"
+    service_examples_tr:
+      - "Düz akış, early return → 0–3"
+      - "Legacy ETL iç içe if/for → 5+ sık görülür"
+    threshold_labels: [dikkat, yuksek, kritik]
+  parameters:
+    id: parameters
+    field: parameterCount
+    label_tr: "Parametre sayısı"
+    measures_tr: "Metod imzasındaki parametre adedi"
+    service_examples_tr:
+      - "DTO + id → 1–2 parametre"
+      - "7+ parametre → DTO veya builder öner"
+    threshold_labels: [dikkat, yuksek, kritik]
+
+# ---------------------------------------------------------------------------
+# Profiller — sayılar + kısa politika cümlesi
+# ---------------------------------------------------------------------------
+profiles:
+  enterprise-java:
+    model_version: v2
+    score_mix:
+      dominant_weight: 0.58
+      blend_weight: 0.42
+    policy_tr: >
+      Monorepo Java servisleri (billing, ETL, katalog). Kısa metodlar normal;
+      asıl alarm çok dallanma ve iç içe yapıdan gelir. LOC eşikleri mock veriye göre düşürüldü.
+    dimensions:
+      branching:
+        thresholds: { dikkat: 10, yuksek: 15, kritik: 25 }
+        when_tr:
+          - "CC ≤ 10 → genelde sakin servis metodu"
+          - "CC 11–15 → orchestrator / kural metodu; ORTA–YÜKSEK bandı"
+          - "CC > 25 → dev metod adayı"
+      length:
+        thresholds: { dikkat: 25, yuksek: 55, kritik: 120 }
+        when_tr:
+          - "LOC < 25 → uzunluk skoru neredeyse etkisiz (tipik facade)"
+          - "LOC 55–120 → prosedürel şişme"
+      nesting:
+        thresholds: { dikkat: 3, yuksek: 5, kritik: 7 }
+        when_tr:
+          - "Derinlik 5 → mock p95; sık YÜKSEK uyarı"
+          - "Derinlik 7+ → lasagna; extract/block refactor"
+      parameters:
+        thresholds: { dikkat: 4, yuksek: 6, kritik: 8 }
+        when_tr:
+          - "6+ parametre → API şişkinliği"
+      cognitive:
+        thresholds: { dikkat: 10, yuksek: 15, kritik: 25 }
+      outboundDistinctCalls:
+        thresholds: { dikkat: 6, yuksek: 10, kritik: 15 }
+      exitPoints:
+        thresholds: { dikkat: 4, yuksek: 6, kritik: 9 }
+      logicalStatements:
+        thresholds: { dikkat: 15, yuksek: 25, kritik: 40 }
+      lambdaCount:
+        thresholds: { dikkat: 1, yuksek: 3, kritik: 6 }
+      switchCases:
+        thresholds: { dikkat: 3, yuksek: 6, kritik: 10 }
+      maxTryNestingDepth:
+        thresholds: { dikkat: 1, yuksek: 2, kritik: 3 }
+      localVariableCount:
+        thresholds: { dikkat: 5, yuksek: 8, kritik: 12 }
+      maxMethodCallChainLength:
+        thresholds: { dikkat: 2, yuksek: 3, kritik: 5 }
+      catchClauses:
+        thresholds: { dikkat: 1, yuksek: 2, kritik: 4 }
+      emptyCatchBlocks:
+        thresholds: { dikkat: 1, yuksek: 2, kritik: 3 }
+      catchExceptionOrThrowable:
+        thresholds: { dikkat: 1, yuksek: 2, kritik: 3 }
+      catchWithOnlyPrintStackTrace:
+        thresholds: { dikkat: 1, yuksek: 2, kritik: 3 }
+    class_dimensions:
+      publicMethodCount:
+        thresholds: { dikkat: 8, yuksek: 12, kritik: 20 }
+      efferentCouplingProxy:
+        thresholds: { dikkat: 8, yuksek: 12, kritik: 18 }
+    blend_weights:
+      branching: 0.17
+      nesting: 0.14
+      length: 0.07
+      parameters: 0.05
+      cognitive: 0.11
+      outboundDistinctCalls: 0.08
+      exitPoints: 0.04
+      logicalStatements: 0.06
+      lambdaCount: 0.03
+      switchCases: 0.04
+      maxTryNestingDepth: 0.03
+      localVariableCount: 0.04
+      maxMethodCallChainLength: 0.04
+      catchClauses: 0.03
+      emptyCatchBlocks: 0.03
+      catchExceptionOrThrowable: 0.02
+      catchWithOnlyPrintStackTrace: 0.02
+    class_blend_weights:
+      publicMethodCount: 0.5
+      efferentCouplingProxy: 0.5
+    god_method:
+      label_tr: "Dev metod uyarısı (skordan bağımsız bayrak)"
+      rules_tr:
+        - "Kod satırı kritik eşiğin üstündeyse"
+        - "VEYA CC kritik eşiğin üstündeyse"
+        - "VEYA metod hem uzun (yüksek LOC) hem karmaşık (yüksek CC) veya çok parametreli"
+
+  strict-review:
+    policy_tr: "PR veya ödeme/kritik modül gate — daha erken uyar."
+    dimensions:
+      branching: { thresholds: { dikkat: 8, yuksek: 12, kritik: 20 } }
+      length: { thresholds: { dikkat: 20, yuksek: 40, kritik: 80 } }
+      nesting: { thresholds: { dikkat: 2, yuksek: 4, kritik: 6 } }
+      parameters: { thresholds: { dikkat: 3, yuksek: 5, kritik: 7 } }
+    blend_weights: { branching: 0.45, nesting: 0.28, length: 0.17, parameters: 0.10 }
+
+  generated-tolerant:
+    policy_tr: "Üretilmiş SQL/string; yalnızca uç değerler alarm."
+    dimensions:
+      branching: { thresholds: { dikkat: 15, yuksek: 25, kritik: 40 } }
+      length: { thresholds: { dikkat: 80, yuksek: 150, kritik: 300 } }
+      nesting: { thresholds: { dikkat: 4, yuksek: 6, kritik: 9 } }
+      parameters: { thresholds: { dikkat: 6, yuksek: 8, kritik: 12 } }
+    blend_weights: { branching: 0.35, nesting: 0.25, length: 0.25, parameters: 0.15 }
+
+# ---------------------------------------------------------------------------
+# v1 kod referansı (karşılaştırma)
+# ---------------------------------------------------------------------------
+current_v1_in_code:
+  dimensions:
+    branching: { dikkat: 10, yuksek: 15, kritik: 30 }
+    length: { dikkat: 50, yuksek: 100, kritik: 200 }
+    nesting: { dikkat: 3, yuksek: 4, kritik: 8 }
+    parameters: { dikkat: 5, yuksek: 7, kritik: 12 }
+  blend_weights: { branching: 0.40, length: 0.20, nesting: 0.25, parameters: 0.15 }
+  known_quirk_tr: "LOC eşikleri çok yüksek; çoğu servis metodunda LOC boyutu hiç devreye girmez."
+
+project_dashboard_tr:
+  projectRiskScore: "Tüm metodların ortalama riski (LOC ağırlıklı) — büyük repoda alçak görünür"
+  methodRiskScoreP95: "En kötü %5 metodun risk seviyesi — servis kuyruğu"
+  highPlusCriticalLocRatio: "Kod satırlarının ne kadarı riskli metodların içinde"
+  criticalMethodsPerKloc: "1000 kod satırında kaç KRİTİK metod"
+
+implementation_v2:
+  - "--risk-profile=enterprise-java"
+  - "YAML dimensions → RiskCalculator"
+  - "plain_language → Markdown rapor 'Model' bölümü"
+
+# Kalibrasyon kaynağı: scripts/mock-modules-scan-percentiles.md (calibrate-scan-metrics.sh)
+scan_calibration:
+  source: scripts/mock-modules-scan-percentiles.md
+  locked_profile: enterprise-java
+  note_tr: "17 metod boyutu enterprise-java blend_weights ile skora bağlı; mock'ta lambda/catch çoğu 0 — gerçek modülde yeniden kalibre et."

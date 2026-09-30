@@ -11,15 +11,17 @@ final class ScanOptionsParser {
     }
 
     static ScanOptions parse(List<String> includeGlobs, List<String> excludeGlobs, int workers,
-                             int progressEvery, ReportDetail reportDetail) {
+                             int progressEvery, ReportDetail reportDetail,
+                             boolean applyDefaultIgnoredDirectories) {
         ScanOptions defaults = ScanOptions.defaults();
         int resolvedWorkers = workers > 0 ? workers : defaults.workers();
         int resolvedProgress = progressEvery > 0 ? progressEvery : defaults.progressEvery();
-        return new ScanOptions(resolvedWorkers, resolvedProgress, includeGlobs, excludeGlobs, reportDetail);
+        return new ScanOptions(resolvedWorkers, resolvedProgress, includeGlobs, excludeGlobs, reportDetail,
+                applyDefaultIgnoredDirectories);
     }
 
     static ReportDetail parseDetail(String raw) {
-        return switch (raw.trim().toLowerCase()) {
+        return switch (raw.trim().toLowerCase(java.util.Locale.ROOT)) {
             case "full" -> ReportDetail.FULL;
             case "summary" -> ReportDetail.SUMMARY;
             default -> throw new IllegalArgumentException("--detail must be full or summary: " + raw);

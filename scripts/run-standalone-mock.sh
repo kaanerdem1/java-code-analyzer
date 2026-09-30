@@ -30,6 +30,7 @@ fi
 echo "[STANDALONE] mock-modules taranıyor..."
 java -jar "${JAR}" \
   --path="${ROOT}/mock-modules" \
+  --risk-profile="${STANDALONE_RISK_PROFILE:-enterprise-java}" \
   --output="${JSON}" \
   --markdown="${MD}" \
   --top=15 \

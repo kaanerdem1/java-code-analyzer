@@ -30,6 +30,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.Comparator;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -48,18 +49,28 @@ public final class ProjectAnalyzer {
             "generated", "generated-sources", "generated-test-sources",
             "__generated__", ".mvn", "vendor", "tmp");
 
-    private final RiskCalculator riskCalculator = new RiskCalculator();
+    /** Deep expression trees (generated SQL/strings) need more stack than the default ~1 MB. */
+    private static final long WORKER_STACK_BYTES = 64L << 20;
+    private static final AtomicInteger WORKER_ID = new AtomicInteger();
+
+    private final RiskCalculator riskCalculator;
     private final ParserConfiguration parserConfiguration;
     private final int topN;
     private final ParserConfiguration.LanguageLevel languageLevel;
     private final ScanOptions scanOptions;
 
     public ProjectAnalyzer(Charset sourceCharset, int topN, ParserConfiguration.LanguageLevel languageLevel) {
-        this(sourceCharset, topN, languageLevel, ScanOptions.defaults());
+        this(sourceCharset, topN, languageLevel, ScanOptions.defaults(), new RiskCalculator());
     }
 
     public ProjectAnalyzer(Charset sourceCharset, int topN, ParserConfiguration.LanguageLevel languageLevel,
                            ScanOptions scanOptions) {
+        this(sourceCharset, topN, languageLevel, scanOptions, new RiskCalculator());
+    }
+
+    public ProjectAnalyzer(Charset sourceCharset, int topN, ParserConfiguration.LanguageLevel languageLevel,
+                           ScanOptions scanOptions, RiskCalculator riskCalculator) {
+        this.riskCalculator = riskCalculator;
         this.languageLevel = languageLevel;
         this.scanOptions = scanOptions;
         this.parserConfiguration = new ParserConfiguration()
@@ -85,53 +96,61 @@ public final class ProjectAnalyzer {
                 + ", parsing as " + languageLevel.name()
                 + ", workers=" + scanOptions.workers() + ", detail=" + scanOptions.reportDetail() + "...");
 
-        List<FileMetric> files = parseAll(sources, base, errors);
+        ScanAccumulator summaryAccumulator =
+                scanOptions.reportDetail() == ReportDetail.SUMMARY ? new ScanAccumulator(topN) : null;
+        List<FileMetric> files = parseAll(sources, base, errors, summaryAccumulator);
         Collections.sort(files, (a, b) -> a.path().compareTo(b.path()));
+        errors.sort(Comparator.comparing(FileError::file));
 
-        Summary summary = buildSummary(sources.size(), files, errors);
-        List<RiskHotspot> hotspots = buildHotspots(files);
-        List<FileMetric> reportFiles =
-                scanOptions.reportDetail() == ReportDetail.SUMMARY ? stripDetail(files) : files;
+        int filesParsed = files.size();
+        int filesFailed = errors.size();
+        Summary summary = summaryAccumulator != null
+                ? summaryAccumulator.toSummary(sources.size(), filesParsed, filesFailed)
+                : buildSummary(sources.size(), files, errors);
+        List<RiskHotspot> hotspots = summaryAccumulator != null
+                ? summaryAccumulator.topHotspots()
+                : buildHotspots(files);
+        List<FileMetric> reportFiles = files;
         long elapsedMs = (System.nanoTime() - started) / 1_000_000L;
         System.err.println("[STANDALONE] Parse wall time: " + elapsedMs + " ms");
 
         return new AnalysisReport(TOOL_NAME, Instant.now().toString(), absoluteRoot.toString(),
-                languageLevel.name(), buildRiskModel(), summary, hotspots, reportFiles, errors);
+                languageLevel.name(), riskCalculator.buildRiskModel(), summary, hotspots, reportFiles, errors);
     }
 
-    private List<FileMetric> parseAll(List<Path> sources, Path base, List<FileError> errors) {
+    private List<FileMetric> parseAll(List<Path> sources, Path base, List<FileError> errors,
+                                      ScanAccumulator summaryAccumulator) {
         if (sources.isEmpty()) {
             return new ArrayList<>();
         }
         if (sources.size() == 1 || scanOptions.workers() == 1) {
-            return parseSequential(sources, base, errors);
+            return parseSequential(sources, base, errors, summaryAccumulator);
         }
-        return parseParallel(sources, base, errors);
+        return parseParallel(sources, base, errors, summaryAccumulator);
     }
 
-    private List<FileMetric> parseSequential(List<Path> sources, Path base, List<FileError> errors) {
+    private List<FileMetric> parseSequential(List<Path> sources, Path base, List<FileError> errors,
+                                             ScanAccumulator summaryAccumulator) {
         List<FileMetric> files = new ArrayList<>();
-        JavaParser parser = new JavaParser(parserConfiguration);
         int processed = 0;
         for (Path source : sources) {
-            parseOne(source, base, parser, files, errors);
+            parseOne(source, base, files, errors, summaryAccumulator);
             logProgress(++processed, sources.size());
         }
         return files;
     }
 
-    private List<FileMetric> parseParallel(List<Path> sources, Path base, List<FileError> errors) {
+    private List<FileMetric> parseParallel(List<Path> sources, Path base, List<FileError> errors,
+                                           ScanAccumulator summaryAccumulator) {
         List<FileMetric> files = Collections.synchronizedList(new ArrayList<>());
         AtomicInteger processed = new AtomicInteger();
-        ThreadLocal<JavaParser> parsers =
-                ThreadLocal.withInitial(() -> new JavaParser(parserConfiguration));
 
-        ExecutorService pool = Executors.newFixedThreadPool(scanOptions.workers());
+        ExecutorService pool = Executors.newFixedThreadPool(scanOptions.workers(), ProjectAnalyzer::newWorkerThread);
         try {
             List<Callable<Void>> tasks = new ArrayList<>();
             for (Path source : sources) {
                 tasks.add(() -> {
-                    parseOne(source, base, parsers.get(), files, errors);
+                    parseOne(source, base, files, errors, summaryAccumulator);
                     logProgress(processed.incrementAndGet(), sources.size());
                     return null;
                 });
@@ -153,14 +172,21 @@ public final class ProjectAnalyzer {
         return new ArrayList<>(files);
     }
 
-    private void parseOne(Path source, Path base, JavaParser parser, List<FileMetric> files, List<FileError> errors) {
+    private void parseOne(Path source, Path base, List<FileMetric> files, List<FileError> errors,
+                          ScanAccumulator summaryAccumulator) {
         String relative = relativePath(base, source);
         try {
-            ParseResult<CompilationUnit> result = parser.parse(source);
+            SourceParser.Outcome outcome = SourceParser.parse(source, sourceCharset(), languageLevel);
+            ParseResult<CompilationUnit> result = outcome.result();
             if (result.isSuccessful() && result.getResult().isPresent()) {
-                files.add(buildFileMetric(relative, result.getResult().get()));
+                files.add(buildFileMetric(relative, result.getResult().get(), summaryAccumulator));
             } else {
-                errors.add(new FileError(relative, "Parse error: " + describe(result.getProblems())));
+                String detail = describe(result.getProblems());
+                if (outcome.attempted().size() > 1) {
+                    detail = detail + " (tried language levels: "
+                            + outcome.attempted().stream().map(Enum::name).collect(Collectors.joining(", ")) + ")";
+                }
+                errors.add(new FileError(relative, "Parse error: " + detail));
             }
         } catch (IOException e) {
             errors.add(new FileError(relative, "I/O error: " + e.getMessage()));
@@ -168,6 +194,8 @@ public final class ProjectAnalyzer {
             errors.add(new FileError(relative, "Parse error: " + e.getMessage()));
         } catch (StackOverflowError e) {
             errors.add(new FileError(relative, "Analysis aborted: expression nesting too deep (stack overflow)"));
+        } catch (OutOfMemoryError e) {
+            errors.add(new FileError(relative, "Analysis aborted: out of memory while analyzing file"));
         } catch (RuntimeException e) {
             errors.add(new FileError(relative, "Unexpected error: " + e));
         }
@@ -177,16 +205,6 @@ public final class ProjectAnalyzer {
         if (processed % scanOptions.progressEvery() == 0 || processed == total) {
             System.err.println("[STANDALONE] " + processed + "/" + total + " files processed");
         }
-    }
-
-    private static List<FileMetric> stripDetail(List<FileMetric> files) {
-        List<FileMetric> slim = new ArrayList<>(files.size());
-        for (FileMetric file : files) {
-            slim.add(new FileMetric(file.path(), file.packageName(), file.physicalLines(), file.codeLines(),
-                    file.classCount(), file.methodCount(), file.totalCyclomaticComplexity(), file.maxCyclomaticComplexity(),
-                    file.riskScore(), file.riskLevel(), file.riskFactors(), List.of()));
-        }
-        return slim;
     }
 
     // ------------------------------------------------------------------ file discovery
@@ -208,7 +226,7 @@ public final class ProjectAnalyzer {
             @Override
             public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
                 if (!dir.equals(root)) {
-                    if (shouldSkipAsBuildOutputDirectory(root, dir)) {
+                    if (shouldSkipAsBuildOutputDirectory(root, dir, scan.applyDefaultIgnoredDirectories())) {
                         skippedIgnoredDirs[0]++;
                         return FileVisitResult.SKIP_SUBTREE;
                     }
@@ -251,13 +269,40 @@ public final class ProjectAnalyzer {
      * Skip {@code target/build/dist/...} trees but not package segments such as
      * {@code src/main/java/com/acme/build/util}.
      */
-    static boolean shouldSkipAsBuildOutputDirectory(Path scanRoot, Path dir) {
+    static boolean shouldSkipAsBuildOutputDirectory(Path scanRoot, Path dir, boolean applyDefaultIgnores) {
+        if (!applyDefaultIgnores) {
+            return false;
+        }
         Path name = dir.getFileName();
         if (name == null || !IGNORED_DIRECTORIES.contains(name.toString())) {
             return false;
         }
         String relative = scanRoot.relativize(dir).toString().replace('\\', '/');
-        return !isUnderJavaSourceTree(relative);
+        if (isUnderJavaSourceTree(relative)) {
+            return false;
+        }
+        Path parent = dir.getParent();
+        return parent != null && isModuleBoundaryDirectory(scanRoot, parent);
+    }
+
+    static boolean isModuleBoundaryDirectory(Path scanRoot, Path directory) {
+        if (directory.equals(scanRoot)) {
+            return true;
+        }
+        return hasBuildMarker(directory)
+                || Files.isDirectory(directory.resolve("src/main/java"))
+                || Files.isDirectory(directory.resolve("src"));
+    }
+
+    private static boolean hasBuildMarker(Path directory) {
+        return Files.isRegularFile(directory.resolve("pom.xml"))
+                || Files.isRegularFile(directory.resolve("build.gradle"))
+                || Files.isRegularFile(directory.resolve("build.gradle.kts"));
+    }
+
+    private Charset sourceCharset() {
+        Charset encoding = parserConfiguration.getCharacterEncoding();
+        return encoding != null ? encoding : java.nio.charset.StandardCharsets.UTF_8;
     }
 
     static boolean isUnderJavaSourceTree(String relativeUnixPath) {
@@ -281,7 +326,7 @@ public final class ProjectAnalyzer {
 
     // ------------------------------------------------------------------ per-file assembly
 
-    private FileMetric buildFileMetric(String relativePath, CompilationUnit cu) {
+    private FileMetric buildFileMetric(String relativePath, CompilationUnit cu, ScanAccumulator summaryAccumulator) {
         BitSet codeLines = ComplexityVisitor.computeCodeLines(cu);
         ComplexityVisitor visitor = new ComplexityVisitor(riskCalculator, codeLines);
         cu.accept(visitor, null);
@@ -298,85 +343,39 @@ public final class ProjectAnalyzer {
         String packageName = cu.getPackageDeclaration().map(p -> p.getNameAsString()).orElse("");
         int physicalLines = cu.getRange().map(r -> r.end.line).orElse(0);
 
-        List<ClassMetric> withHierarchy = attachHierarchy(relativePath, packageName, classes);
-        return new FileMetric(relativePath, packageName, physicalLines, loc, withHierarchy.size(), methods.size(),
-                wmc, maxCc, risk.score(), risk.level(), risk.factors(), withHierarchy);
+        if (summaryAccumulator != null) {
+            summaryAccumulator.ingestFile(relativePath, packageName, classes, loc);
+            return slimFileMetric(relativePath, packageName, physicalLines, loc, classes.size(), methods.size(),
+                    wmc, maxCc, risk);
+        }
+
+        return new FileMetric(relativePath, packageName, physicalLines, loc, classes.size(), methods.size(),
+                wmc, maxCc, risk.score(), risk.level(), risk.factors(), classes);
     }
 
-    private static List<ClassMetric> attachHierarchy(String relativePath, String packageName, List<ClassMetric> classes) {
-        List<ClassMetric> enriched = new ArrayList<>(classes.size());
-        for (ClassMetric type : classes) {
-            List<MethodMetric> methods = new ArrayList<>(type.methods().size());
-            for (MethodMetric method : type.methods()) {
-                List<String> ancestors = MethodHierarchy.ancestorPath(
-                        relativePath, packageName, type.name(), method.signature());
-                methods.add(new MethodMetric(
-                        method.name(), method.kind(), method.signature(), method.startLine(), method.endLine(),
-                        method.cyclomaticComplexity(), method.physicalLines(), method.codeLines(),
-                        method.logicalStatements(), method.maxNestingDepth(), method.parameterCount(),
-                        method.godMethod(), method.riskScore(), method.riskLevel(), method.riskFactors(),
-                        method.riskBreakdown(), MethodHierarchy.moduleRoot(relativePath), ancestors));
-            }
-            enriched.add(new ClassMetric(type.name(), type.kind(), type.startLine(), type.endLine(), type.methodCount(),
-                    type.codeLines(), type.weightedMethodComplexity(), type.maxMethodComplexity(),
-                    type.averageMethodComplexity(), type.riskScore(), type.riskLevel(), type.riskFactors(), methods));
-        }
-        return enriched;
+    private static FileMetric slimFileMetric(String relativePath, String packageName, int physicalLines, int loc,
+                                             int classCount, int methodCount, int wmc, int maxCc,
+                                             RiskCalculator.Assessment risk) {
+        return new FileMetric(relativePath, packageName, physicalLines, loc, classCount, methodCount,
+                wmc, maxCc, risk.score(), risk.level(), risk.factors(), List.of());
     }
 
     // ------------------------------------------------------------------ report-level aggregation
 
     private Summary buildSummary(int scanned, List<FileMetric> files, List<FileError> errors) {
-        Map<RiskLevel, Long> distribution = new EnumMap<>(RiskLevel.class);
-        for (RiskLevel level : RiskLevel.values()) {
-            distribution.put(level, 0L);
-        }
-
+        ProjectSummaryStats stats = new ProjectSummaryStats();
         int classCount = 0;
-        int methodCount = 0;
-        int godMethods = 0;
-        int maxCc = 0;
         int totalLoc = 0;
-        long totalCc = 0;
-        double weightedScore = 0;
-        long weight = 0;
-
         for (FileMetric file : files) {
             totalLoc += file.codeLines();
             classCount += file.classCount();
             for (ClassMetric type : file.classes()) {
                 for (MethodMetric method : type.methods()) {
-                    methodCount++;
-                    totalCc += method.cyclomaticComplexity();
-                    maxCc = Math.max(maxCc, method.cyclomaticComplexity());
-                    distribution.merge(method.riskLevel(), 1L, Long::sum);
-                    if (method.godMethod()) {
-                        godMethods++;
-                    }
-                    long methodWeight = Math.max(1, method.codeLines());
-                    weightedScore += method.riskScore() * methodWeight;
-                    weight += methodWeight;
+                    stats.addMethod(method);
                 }
             }
         }
-
-        double avgCc = methodCount == 0 ? 0.0 : Math.round(totalCc * 100.0 / methodCount) / 100.0;
-        double projectScore = weight == 0 ? 0.0 : RiskCalculator.round3(weightedScore / weight);
-
-        return new Summary(scanned, files.size(), scanned - files.size(), classCount, methodCount,
-                totalLoc, avgCc, maxCc, godMethods, projectScore, RiskLevel.fromScore(projectScore), distribution);
-    }
-
-    private static AnalysisReport.RiskModel buildRiskModel() {
-        return new AnalysisReport.RiskModel(
-                "v1",
-                "finalScore = min(bandCap, max(cc,loc,nesting,paramsSubScore) + 0.15 * weightedBlend)",
-                Map.of("cyclomatic", 0.40, "codeLines", 0.20, "nesting", 0.25, "parameters", 0.15),
-                Map.of(
-                        "cyclomatic", List.of(RiskCalculator.CC_MEDIUM, RiskCalculator.CC_HIGH, RiskCalculator.CC_CRITICAL),
-                        "codeLines", List.of(RiskCalculator.LOC_MEDIUM, RiskCalculator.LOC_HIGH, RiskCalculator.LOC_CRITICAL),
-                        "nesting", List.of(RiskCalculator.NESTING_MEDIUM, RiskCalculator.NESTING_HIGH, RiskCalculator.NESTING_CRITICAL),
-                        "parameters", List.of(RiskCalculator.PARAMS_MEDIUM, RiskCalculator.PARAMS_HIGH, RiskCalculator.PARAMS_CRITICAL)));
+        return stats.toSummary(scanned, files.size(), errors.size(), classCount, totalLoc);
     }
 
     private List<RiskHotspot> buildHotspots(List<FileMetric> files) {
@@ -384,10 +383,11 @@ public final class ProjectAnalyzer {
         for (FileMetric file : files) {
             for (ClassMetric type : file.classes()) {
                 for (MethodMetric m : type.methods()) {
-                    hotspots.add(new RiskHotspot(file.path(), type.name(), m.signature(), m.startLine(),
-                            m.riskScore(), m.riskLevel(), m.cyclomaticComplexity(), m.codeLines(),
-                            m.maxNestingDepth(), m.parameterCount(), m.riskFactors(), m.moduleRoot(),
-                            m.ancestorPath()));
+                    hotspots.add(new RiskHotspot(file.path(), file.packageName(), type.name(), m.signature(),
+                            m.startLine(), m.riskScore(), m.riskLevel(), m.cyclomaticComplexity(), m.codeLines(),
+                            m.maxNestingDepth(), m.parameterCount(), m.cognitiveComplexity(),
+                            m.outboundDistinctCalls(), RiskBreakdownUtil.dominantDriver(m.riskBreakdown()),
+                            m.riskFactors()));
                 }
             }
         }
@@ -396,5 +396,10 @@ public final class ProjectAnalyzer {
             return byScore != 0 ? byScore : Integer.compare(b.cyclomaticComplexity(), a.cyclomaticComplexity());
         });
         return hotspots.size() > topN ? new ArrayList<>(hotspots.subList(0, topN)) : hotspots;
+    }
+
+    private static Thread newWorkerThread(Runnable task) {
+        int id = WORKER_ID.incrementAndGet();
+        return new Thread(null, task, "standalone-parser-" + id, WORKER_STACK_BYTES);
     }
 }

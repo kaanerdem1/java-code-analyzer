@@ -1,12 +1,13 @@
 package com.standalone.analyzer;
 
-import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
-
+import java.io.BufferedWriter;
+import java.io.Reader;
 import java.io.FileDescriptor;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.OutputStreamWriter;
 import java.io.PrintStream;
+import java.io.Writer;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -18,6 +19,7 @@ import com.standalone.analyzer.ScanOptions.ReportDetail;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * Entry point.
@@ -60,12 +62,15 @@ public final class Java6CodeAnalyzerMain {
                 return 1;
             }
 
+            RiskCalculator riskCalculator =
+                    RiskProfileResolver.create(options.riskProfile(), options.riskConfig());
             AnalysisConsoleLogger.logRunHeader(
                     new AnalysisConsoleLogger.PathLabel(options.path().toAbsolutePath().normalize().toString()),
-                    options.verbose());
+                    options.verbose(), riskCalculator);
 
             AnalysisReport report = new ProjectAnalyzer(
-                    options.charset(), options.top(), options.languageLevel(), options.scanOptions())
+                    options.charset(), options.top(), options.languageLevel(), options.scanOptions(),
+                    riskCalculator)
                     .analyze(options.path());
             writeJson(report, options);
             writeMarkdownIfRequested(report, options);
@@ -84,7 +89,7 @@ public final class Java6CodeAnalyzerMain {
             System.err.println("[STANDALONE] Done: " + s.filesParsed() + " parsed, " + s.filesFailed() + " failed, "
                     + s.methodCount() + " methods, project risk " + s.projectRiskScore()
                     + " (" + s.projectRiskLevel() + ")");
-            return 0;
+            return ScanExitEvaluator.evaluate(report, options.maxFailureRatio(), options.failOnRisk());
         } catch (IOException e) {
             System.err.println("[ERROR] I/O failure: " + e.getMessage());
             return 1;
@@ -102,29 +107,34 @@ public final class Java6CodeAnalyzerMain {
         if (parent != null) {
             Files.createDirectories(parent);
         }
-        Files.writeString(options.markdown(), StandaloneReportMarkdown.render(report), StandardCharsets.UTF_8);
+        try (Writer w = Files.newBufferedWriter(options.markdown(), StandardCharsets.UTF_8)) {
+            if (options.output() != null && Files.isRegularFile(options.output())) {
+                try (Reader r = Files.newBufferedReader(options.output(), StandardCharsets.UTF_8)) {
+                    StandaloneReportMarkdown.renderFromJson(r, w);
+                }
+            } else {
+                StandaloneReportMarkdown.write(report, w);
+            }
+        }
         System.err.println("[STANDALONE] Readable Markdown: " + options.markdown().toAbsolutePath().normalize());
     }
 
     private static void writeJson(AnalysisReport report, Options options) throws IOException {
-        GsonBuilder builder = new GsonBuilder().disableHtmlEscaping();
-        if (!options.compact()) {
-            builder.setPrettyPrinting();
-        }
-        Gson gson = builder.create();
-        String json = gson.toJson(report);
-
         if (options.output() != null) {
             Path parent = options.output().toAbsolutePath().getParent();
             if (parent != null) {
                 Files.createDirectories(parent);
             }
-            Files.writeString(options.output(), json, StandardCharsets.UTF_8);
+            try (Writer w = Files.newBufferedWriter(options.output(), StandardCharsets.UTF_8)) {
+                AnalysisReportJsonWriter.write(report, w, options.compact());
+            }
             System.err.println("[STANDALONE] Report written to " + options.output().toAbsolutePath());
         } else {
-            PrintStream out = new PrintStream(new FileOutputStream(FileDescriptor.out), false, StandardCharsets.UTF_8);
-            out.println(json);
-            out.flush();
+            Writer w = new BufferedWriter(new OutputStreamWriter(
+                    new FileOutputStream(FileDescriptor.out), StandardCharsets.UTF_8));
+            AnalysisReportJsonWriter.write(report, w, options.compact());
+            w.write('\n');
+            w.flush();
         }
     }
 
@@ -149,12 +159,18 @@ public final class Java6CodeAnalyzerMain {
                   --include=<glob>    Only scan matching paths (repeatable / comma-separated)
                   --exclude=<glob>    Skip matching paths (repeatable / comma-separated)
                   --detail=full|summary  full = all methods in JSON; summary = hotspots + file totals
+                  --no-default-ignores  Do not skip target/build/etc. at module boundaries
+                  --risk-profile=<id>   YAML profile (e.g. enterprise-java); default = legacy v1
+                  --risk-config=<file>  Risk YAML path (default: config/risk-parameters-proposal.yaml)
+                  --max-failure-ratio=<0-1>  Exit 2 if parse failures / files scanned exceeds ratio
+                  --fail-on-risk=<LEVEL>   Exit 3 if any method or project risk >= LEVEL (LOW|MEDIUM|HIGH|CRITICAL)
                   --help              Show this help
                 """);
     }
 
     private record Options(Path path, Path output, Path markdown, int top, Charset charset,
                            ParserConfiguration.LanguageLevel languageLevel, ScanOptions scanOptions,
+                           String riskProfile, Path riskConfig, Double maxFailureRatio, RiskLevel failOnRisk,
                            boolean compact, boolean verbose, boolean help) {
 
         static Options parse(String[] args) {
@@ -172,6 +188,11 @@ public final class Java6CodeAnalyzerMain {
             boolean compact = false;
             boolean verbose = false;
             boolean help = false;
+            boolean noDefaultIgnores = false;
+            String riskProfile = null;
+            Path riskConfig = null;
+            Double maxFailureRatio = null;
+            RiskLevel failOnRisk = null;
 
             for (String arg : args) {
                 if (arg.equals("--help") || arg.equals("-h")) {
@@ -202,6 +223,16 @@ public final class Java6CodeAnalyzerMain {
                     excludes.addAll(ScanOptionsParser.splitCsv(value(arg)));
                 } else if (arg.startsWith("--detail=")) {
                     detail = ScanOptionsParser.parseDetail(value(arg));
+                } else if (arg.equals("--no-default-ignores")) {
+                    noDefaultIgnores = true;
+                } else if (arg.startsWith("--risk-profile=")) {
+                    riskProfile = value(arg);
+                } else if (arg.startsWith("--risk-config=")) {
+                    riskConfig = Paths.get(value(arg));
+                } else if (arg.startsWith("--max-failure-ratio=")) {
+                    maxFailureRatio = parseRatio(value(arg));
+                } else if (arg.startsWith("--fail-on-risk=")) {
+                    failOnRisk = RiskLevel.valueOf(value(arg).trim().toUpperCase(Locale.ROOT));
                 } else {
                     throw new IllegalArgumentException("Unknown argument: " + arg);
                 }
@@ -209,10 +240,18 @@ public final class Java6CodeAnalyzerMain {
             if (!help && path == null) {
                 throw new IllegalArgumentException("Missing required argument --path=<dir>");
             }
-            ScanOptions scanOptions =
-                    ScanOptionsParser.parse(includes, excludes, workers, progressEvery, detail);
-            return new Options(path, output, markdown, top, charset, languageLevel, scanOptions, compact, verbose,
-                    help);
+            ScanOptions scanOptions = ScanOptionsParser.parse(includes, excludes, workers, progressEvery, detail,
+                    !noDefaultIgnores);
+            return new Options(path, output, markdown, top, charset, languageLevel, scanOptions, riskProfile,
+                    riskConfig, maxFailureRatio, failOnRisk, compact, verbose, help);
+        }
+
+        private static double parseRatio(String raw) {
+            double value = Double.parseDouble(raw);
+            if (value < 0.0 || value > 1.0) {
+                throw new IllegalArgumentException("--max-failure-ratio must be between 0 and 1");
+            }
+            return value;
         }
 
         private static int parsePositiveInt(String raw, String flag) {

@@ -1,8 +1,8 @@
 package com.standalone.analyzer;
 
-import com.google.gson.Gson;
-
 import java.io.IOException;
+import java.io.Reader;
+import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -53,8 +53,11 @@ public final class ReadableReportMain {
     private static int standalone(String[] args) throws IOException {
         Path json = Paths.get(args[1]);
         Path out = args.length >= 3 ? Paths.get(args[2]) : defaultMd(json, PARSER_MD);
-        AnalysisReport report = loadJson(json);
-        write(out, StandaloneReportMarkdown.render(report));
+        ensureParent(out);
+        try (Reader r = Files.newBufferedReader(json, StandardCharsets.UTF_8);
+             Writer w = Files.newBufferedWriter(out, StandardCharsets.UTF_8)) {
+            StandaloneReportMarkdown.renderFromJson(r, w);
+        }
         System.err.println("[READABLE] Parser Markdown: " + out.toAbsolutePath().normalize());
         return 0;
     }
@@ -62,22 +65,17 @@ public final class ReadableReportMain {
     private static int pmd(String[] args) throws IOException {
         Path xml = Paths.get(args[1]);
         Path out = args.length >= 3 ? Paths.get(args[2]) : defaultMd(xml, PMD_MD);
-        write(out, PmdXmlMarkdown.render(xml));
+        ensureParent(out);
+        Files.writeString(out, PmdXmlMarkdown.render(xml), StandardCharsets.UTF_8);
         System.err.println("[READABLE] PMD Markdown: " + out.toAbsolutePath().normalize());
         return 0;
     }
 
-    private static AnalysisReport loadJson(Path json) throws IOException {
-        Gson gson = new Gson();
-        return gson.fromJson(Files.readString(json, StandardCharsets.UTF_8), AnalysisReport.class);
-    }
-
-    private static void write(Path out, String markdown) throws IOException {
+    private static void ensureParent(Path out) throws IOException {
         Path parent = out.toAbsolutePath().getParent();
         if (parent != null) {
             Files.createDirectories(parent);
         }
-        Files.writeString(out, markdown, StandardCharsets.UTF_8);
     }
 
     /** Varsayılan: aynı klasörde sabit Türkçe dosya adı. */

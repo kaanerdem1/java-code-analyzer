@@ -1,47 +1,16 @@
 package com.standalone.analyzer;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
- * Turns raw metrics into a normalised 0.0 - 1.0 technical risk score.
- *
- * <p>Algorithm:
- * <ol>
- *   <li>Every metric is mapped to a sub-score with a piecewise-linear curve anchored on its
- *       MEDIUM / HIGH / CRITICAL thresholds (value &gt; threshold moves it into the next band).</li>
- *   <li>The worst sub-score dominates the result (one critical smell cannot be averaged away).</li>
- *   <li>A small compound bonus (weighted mean of all sub-scores) separates methods that are bad in
- *       several dimensions from methods that are bad in one; the bonus never leaves the band.</li>
- * </ol>
- * Class and file scores follow the same principle using their worst method, average method risk,
- * total size and WMC (sum of cyclomatic complexities).
+ * Turns raw metrics into a normalised 0.0 - 1.0 technical risk score (profile-driven v2 or legacy v1).
  */
 public final class RiskCalculator {
 
-    // Thresholds: value > MEDIUM/HIGH/CRITICAL enters the respective band.
-    public static final int CC_MEDIUM = 10;
-    public static final int CC_HIGH = 15;
-    public static final int CC_CRITICAL = 30;
-
-    public static final int LOC_MEDIUM = 50;
-    public static final int LOC_HIGH = 100;
-    public static final int LOC_CRITICAL = 200;
-
-    public static final int NESTING_MEDIUM = 3;
-    public static final int NESTING_HIGH = 4;
-    public static final int NESTING_CRITICAL = 8;
-
-    public static final int PARAMS_MEDIUM = 5;
-    public static final int PARAMS_HIGH = 7;
-    public static final int PARAMS_CRITICAL = 12;
-
-    private static final double WEIGHT_CC = 0.40;
-    private static final double WEIGHT_LOC = 0.20;
-    private static final double WEIGHT_NESTING = 0.25;
-    private static final double WEIGHT_PARAMS = 0.15;
-
-    private static final double COMPOUND_FACTOR = 0.15;
+    public static final double LEGACY_COMPOUND_FACTOR = 0.15;
     private static final double WORST_METHOD_INFLUENCE = 0.65;
 
     /** Size thresholds for aggregate (class / file) assessment. */
@@ -62,6 +31,20 @@ public final class RiskCalculator {
         }
     }
 
+    private final RiskProfile profile;
+
+    public RiskCalculator() {
+        this(RiskProfile.v1Legacy());
+    }
+
+    public RiskCalculator(RiskProfile profile) {
+        this.profile = profile;
+    }
+
+    public RiskProfile profile() {
+        return profile;
+    }
+
     public record Assessment(double score, RiskLevel level, List<String> factors, RiskBreakdown breakdown) {
 
         Assessment(double score, RiskLevel level, List<String> factors) {
@@ -69,45 +52,130 @@ public final class RiskCalculator {
         }
     }
 
-    public Assessment assessMethod(int cyclomatic, int codeLines, int nesting, int parameters) {
-        double sCc = subScore(cyclomatic, CC_MEDIUM, CC_HIGH, CC_CRITICAL);
-        double sLoc = subScore(codeLines, LOC_MEDIUM, LOC_HIGH, LOC_CRITICAL);
-        double sNesting = subScore(nesting, NESTING_MEDIUM, NESTING_HIGH, NESTING_CRITICAL);
-        double sParams = subScore(parameters, PARAMS_MEDIUM, PARAMS_HIGH, PARAMS_CRITICAL);
-
-        double dominant = Math.max(Math.max(sCc, sLoc), Math.max(sNesting, sParams));
-        double blend = WEIGHT_CC * sCc + WEIGHT_LOC * sLoc + WEIGHT_NESTING * sNesting + WEIGHT_PARAMS * sParams;
-
+    public Assessment assessMethod(MethodScanValues values) {
+        double dominant = 0.0;
+        double blend = 0.0;
         List<String> factors = new ArrayList<>();
-        describe(factors, "Cyclomatic complexity", cyclomatic, sCc, CC_HIGH, CC_CRITICAL);
-        describe(factors, "Lines of code", codeLines, sLoc, LOC_HIGH, LOC_CRITICAL);
-        describe(factors, "Nesting depth", nesting, sNesting, NESTING_HIGH, NESTING_CRITICAL);
-        describe(factors, "Parameter count", parameters, sParams, PARAMS_HIGH, PARAMS_CRITICAL);
 
-        double compoundBonus = round3(COMPOUND_FACTOR * blend);
-        Assessment assessment = compose(dominant, blend, factors);
-        RiskBreakdown breakdown = new RiskBreakdown(
-                cyclomatic, codeLines, nesting, parameters,
-                round3(sCc), round3(sLoc), round3(sNesting), round3(sParams),
-                round3(dominant), round3(blend), compoundBonus, assessment.score());
+        double ccSub = 0;
+        double locSub = 0;
+        double nestSub = 0;
+        double paramsSub = 0;
+        double cognitiveSub = 0;
+        double outboundSub = 0;
+        double exitSub = 0;
+        Map<String, Double> extraSubScores = new LinkedHashMap<>();
+
+        for (RiskProfile.ScoredDimension<MethodScanValues> dimension : profile.methodDimensions()) {
+            int raw = dimension.value().applyAsInt(values);
+            double sub = subScore(raw, dimension.medium(), dimension.high(), dimension.critical());
+            dominant = Math.max(dominant, sub);
+            blend += dimension.weight() * sub;
+            describe(factors, dimension.label(), raw, sub, dimension.high(), dimension.critical());
+            switch (dimension.id()) {
+                case "branching" -> ccSub = sub;
+                case "length" -> locSub = sub;
+                case "nesting" -> nestSub = sub;
+                case "parameters" -> paramsSub = sub;
+                case "cognitive" -> cognitiveSub = sub;
+                case "outboundDistinctCalls" -> outboundSub = sub;
+                case "exitPoints" -> exitSub = sub;
+                default -> extraSubScores.put(dimension.id(), roundScore(sub));
+            }
+        }
+
+        double mixedCore = profile.dominantWeight() * dominant + profile.blendWeight() * blend;
+        double fine = discriminativeFine(values);
+        double preClamp = mixedCore + fine;
+        Assessment assessment = composeFromRawScore(preClamp, factors);
+        double appliedBonus = roundScore(assessment.score() - mixedCore);
+        RiskBreakdown breakdown = RiskBreakdown.legacyV1(
+                values.cyclomaticComplexity(), values.codeLines(), values.maxNestingDepth(), values.parameterCount(),
+                roundScore(ccSub), roundScore(locSub), roundScore(nestSub), roundScore(paramsSub),
+                roundScore(cognitiveSub), roundScore(outboundSub), roundScore(exitSub), extraSubScores,
+                roundScore(dominant), roundScore(blend), appliedBonus, assessment.score());
         return new Assessment(assessment.score(), assessment.level(), assessment.factors(), breakdown);
     }
 
-    /** God Method heuristic: very large, very complex, or large AND (complex or wide signature). */
-    public boolean isGodMethod(int cyclomatic, int codeLines, int parameters) {
-        return codeLines > LOC_CRITICAL
-                || cyclomatic > CC_CRITICAL
-                || (codeLines > LOC_HIGH && (cyclomatic > CC_HIGH || parameters > PARAMS_HIGH));
+    /** Backward-compatible entry (legacy tests). */
+    public Assessment assessMethod(int cyclomatic, int codeLines, int nesting, int parameters) {
+        return assessMethod(MethodScanValues.zeros(cyclomatic, codeLines, nesting, parameters));
     }
 
-    /** Aggregate assessment for a class or a whole file. */
+    public AnalysisReport.RiskModel buildRiskModel() {
+        Map<String, Double> weights = new LinkedHashMap<>();
+        Map<String, List<Integer>> thresholds = new LinkedHashMap<>();
+        for (RiskProfile.ScoredDimension<MethodScanValues> dimension : profile.methodDimensions()) {
+            weights.put(dimension.id(), dimension.weight());
+            thresholds.put(dimension.id(), List.of(
+                    dimension.medium(), dimension.high(), dimension.critical()));
+        }
+        String formula = "finalScore = clamp(0,100, "
+                + profile.dominantWeight() + "*max(subScores) + "
+                + profile.blendWeight() + "*weightedBlend + fine); profile=" + profile.profileId();
+        return new AnalysisReport.RiskModel(
+                profile.modelVersion(),
+                formula,
+                weights,
+                thresholds);
+    }
+
+    public static String consoleModelLine(RiskCalculator calculator) {
+        return "Profile " + calculator.profile.profileId() + " ("
+                + calculator.profile.modelVersion() + "): score 0–100 = "
+                + (int) (calculator.profile.dominantWeight() * 100) + "% max(sub) + "
+                + (int) (calculator.profile.blendWeight() * 100) + "% weighted blend + fine tie-break.";
+    }
+
+    public boolean isGodMethod(MethodScanValues values) {
+        RiskProfile.ThresholdTriple cc = profile.godMethodThresholds().get("branching");
+        RiskProfile.ThresholdTriple loc = profile.godMethodThresholds().get("length");
+        RiskProfile.ThresholdTriple params = profile.godMethodThresholds().get("parameters");
+        if (cc == null || loc == null || params == null) {
+            return false;
+        }
+        return values.codeLines() > loc.kritik()
+                || values.cyclomaticComplexity() > cc.kritik()
+                || (values.codeLines() > loc.yuksek()
+                && (values.cyclomaticComplexity() > cc.yuksek() || values.parameterCount() > params.yuksek()));
+    }
+
+    public boolean isGodMethod(int cyclomatic, int codeLines, int parameters) {
+        return isGodMethod(MethodScanValues.zeros(cyclomatic, codeLines, 0, parameters));
+    }
+
+    /** Class-level aggregate (includes optional class dimensions from profile). */
+    public Assessment assessClassAggregate(
+            List<MethodMetric> methods, int codeLines, int wmc, int publicMethodCount, int efferentCoupling) {
+        return assessAggregateInternal(methods, codeLines, wmc, publicMethodCount, efferentCoupling, Scope.CLASS);
+    }
+
+    /** File-level aggregate (no class coupling dimensions). */
     public Assessment assessAggregate(List<MethodMetric> methods, int codeLines, int wmc, Scope scope) {
+        return assessAggregateInternal(methods, codeLines, wmc, 0, 0, scope);
+    }
+
+    private Assessment assessAggregateInternal(
+            List<MethodMetric> methods, int codeLines, int wmc, int publicMethodCount, int efferentCoupling,
+            Scope scope) {
         double sSize = subScore(codeLines, scope.locMedium, scope.locHigh, scope.locCritical);
         double sWmc = subScore(wmc, scope.wmcMedium, scope.wmcHigh, scope.wmcCritical);
         double worstMethod = methods.stream().mapToDouble(MethodMetric::riskScore).max().orElse(0.0);
         double avgMethod = methods.stream().mapToDouble(MethodMetric::riskScore).average().orElse(0.0);
 
         double dominant = Math.max(Math.max(sSize, sWmc), WORST_METHOD_INFLUENCE * worstMethod);
+        double classBlend = 0.0;
+        RiskProfile.ClassScanValues classValues =
+                new RiskProfile.ClassScanValues(codeLines, wmc, publicMethodCount, efferentCoupling);
+
+        if (scope == Scope.CLASS) {
+            for (RiskProfile.ScoredDimension<RiskProfile.ClassScanValues> dimension : profile.classDimensions()) {
+                int raw = dimension.value().applyAsInt(classValues);
+                double sub = subScore(raw, dimension.medium(), dimension.high(), dimension.critical());
+                dominant = Math.max(dominant, sub);
+                classBlend += dimension.weight() * sub;
+            }
+        }
 
         List<String> factors = new ArrayList<>();
         long critical = methods.stream().filter(m -> m.riskLevel() == RiskLevel.CRITICAL).count();
@@ -118,27 +186,73 @@ public final class RiskCalculator {
         describe(factors, "Code size (lines)", codeLines, sSize, scope.locHigh, scope.locCritical);
         describe(factors, "Total cyclomatic complexity (WMC)", wmc, sWmc, scope.wmcHigh, scope.wmcCritical);
 
-        return compose(dominant, avgMethod, factors);
+        if (scope == Scope.CLASS) {
+            for (RiskProfile.ScoredDimension<RiskProfile.ClassScanValues> dimension : profile.classDimensions()) {
+                int raw = dimension.value().applyAsInt(classValues);
+                double sub = subScore(raw, dimension.medium(), dimension.high(), dimension.critical());
+                describe(factors, dimension.label(), raw, sub, dimension.high(), dimension.critical());
+            }
+        }
+
+        double blend = scope == Scope.CLASS && !profile.classDimensions().isEmpty()
+                ? (avgMethod + classBlend) / 2.0
+                : avgMethod;
+        double mixed = profile.dominantWeight() * dominant + profile.blendWeight() * blend;
+        return composeFromRawScore(mixed, factors);
     }
 
-    // ------------------------------------------------------------------ helpers
-
-    private Assessment compose(double dominant, double blend, List<String> factors) {
-        RiskLevel level = RiskLevel.fromScore(dominant);
-        double score = Math.min(level.maxScore(), dominant + COMPOUND_FACTOR * blend);
-        return new Assessment(round3(score), level, List.copyOf(factors));
+    private Assessment composeFromRawScore(double rawScore, List<String> factors) {
+        double score = RiskScoreScale.clamp(rawScore);
+        RiskLevel level = RiskLevel.fromScore(score);
+        return new Assessment(roundScore(score), level, List.copyOf(factors));
     }
 
     /**
-     * Piecewise-linear normalisation. value &lt;= medium stays below 0.30, value &gt; medium is
-     * at least 0.30, value &gt; high at least 0.50, value &gt; critical at least 0.80 (up to 1.0).
+     * Deterministic micro-offset from all raw counters so identical vectors tie, otherwise scores differ
+     * (up to ~0.05 on the 0–100 scale, before rounding to 3 decimals).
      */
+    static double discriminativeFine(MethodScanValues values) {
+        long fingerprint = 0;
+        fingerprint = mix(fingerprint, values.cyclomaticComplexity());
+        fingerprint = mix(fingerprint, values.codeLines());
+        fingerprint = mix(fingerprint, values.maxNestingDepth());
+        fingerprint = mix(fingerprint, values.parameterCount());
+        fingerprint = mix(fingerprint, values.cognitiveComplexity());
+        fingerprint = mix(fingerprint, values.logicalStatements());
+        fingerprint = mix(fingerprint, values.exitPoints());
+        fingerprint = mix(fingerprint, values.catchClauses());
+        fingerprint = mix(fingerprint, values.switchCases());
+        fingerprint = mix(fingerprint, values.outboundDistinctCalls());
+        fingerprint = mix(fingerprint, values.lambdaCount());
+        fingerprint = mix(fingerprint, values.maxTryNestingDepth());
+        fingerprint = mix(fingerprint, values.localVariableCount());
+        fingerprint = mix(fingerprint, values.maxMethodCallChainLength());
+        fingerprint = mix(fingerprint, values.emptyCatchBlocks());
+        fingerprint = mix(fingerprint, values.catchExceptionOrThrowable());
+        fingerprint = mix(fingerprint, values.catchWithOnlyPrintStackTrace());
+        double unit = (fingerprint % 50_000) / 1_000_000.0;
+        return unit * RiskScoreScale.MAX;
+    }
+
+    private static long mix(long acc, int value) {
+        return acc * 31L + (value & 0xFFFFL);
+    }
+
+    /** Sub-score on 0–100 (piecewise linear bands). */
     static double subScore(int value, int medium, int high, int critical) {
-        if (value <= 0) return 0.0;
-        if (value <= medium) return 0.29 * value / medium;
-        if (value <= high) return 0.30 + 0.19 * (value - medium) / (high - medium);
-        if (value <= critical) return 0.50 + 0.29 * (value - high) / (critical - high);
-        return 0.80 + 0.20 * Math.min(1.0, (double) (value - critical) / critical);
+        double unit;
+        if (value <= 0) {
+            unit = 0.0;
+        } else if (value <= medium) {
+            unit = 0.29 * value / medium;
+        } else if (value <= high) {
+            unit = 0.30 + 0.19 * (value - medium) / (high - medium);
+        } else if (value <= critical) {
+            unit = 0.50 + 0.29 * (value - high) / (critical - high);
+        } else {
+            unit = 0.80 + 0.20 * Math.min(1.0, (double) (value - critical) / critical);
+        }
+        return RiskScoreScale.toDisplayScale(unit);
     }
 
     private static void describe(List<String> factors, String label, int value, double subScore,
@@ -151,7 +265,13 @@ public final class RiskCalculator {
         }
     }
 
-    public static double round3(double value) {
+    /** Round to 3 decimals on the 0–100 scale (e.g. 68.374). */
+    public static double roundScore(double value) {
         return Math.round(value * 1000.0) / 1000.0;
+    }
+
+    /** @deprecated use {@link #roundScore} */
+    public static double round3(double value) {
+        return roundScore(value);
     }
 }
