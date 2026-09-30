@@ -212,11 +212,11 @@ public final class Java6CodeAnalyzerMain {
                 } else if (arg.equals("--compact")) {
                     compact = true;
                 } else if (arg.startsWith("--path=")) {
-                    path = Paths.get(value(arg));
+                    path = Paths.get(pathValue(arg, "--path"));
                 } else if (arg.startsWith("--output=")) {
-                    output = Paths.get(value(arg));
+                    output = Paths.get(pathValue(arg, "--output"));
                 } else if (arg.startsWith("--markdown=")) {
-                    markdown = Paths.get(value(arg));
+                    markdown = Paths.get(pathValue(arg, "--markdown"));
                 } else if (arg.startsWith("--top=")) {
                     top = parseTop(value(arg));
                 } else if (arg.startsWith("--encoding=")) {
@@ -238,7 +238,7 @@ public final class Java6CodeAnalyzerMain {
                 } else if (arg.startsWith("--risk-profile=")) {
                     riskProfile = value(arg);
                 } else if (arg.startsWith("--risk-config=")) {
-                    riskConfig = Paths.get(value(arg));
+                    riskConfig = Paths.get(pathValue(arg, "--risk-config"));
                 } else if (arg.startsWith("--max-failure-ratio=")) {
                     maxFailureRatio = parseRatio(value(arg));
                 } else if (arg.startsWith("--fail-on-risk=")) {
@@ -280,6 +280,41 @@ public final class Java6CodeAnalyzerMain {
             String value = arg.substring(arg.indexOf('=') + 1).trim();
             if (value.isEmpty()) {
                 throw new IllegalArgumentException("Empty value for " + arg);
+            }
+            return value;
+        }
+
+        /**
+         * Windows CMD/PowerShell sometimes merges {@code --path="…" --output=…} into one argv token;
+         * strip quotes and reject embedded follow-on flags with a clear message.
+         */
+        private static String pathValue(String arg, String flag) {
+            String value = value(arg);
+            int mergedFlag = value.indexOf("\" --");
+            if (mergedFlag >= 0) {
+                value = value.substring(0, mergedFlag);
+            }
+            value = stripOuterQuotes(value.trim());
+            if (value.contains("\"")) {
+                throw new IllegalArgumentException(flag + " contains an illegal \" character. "
+                        + "Quote each argument separately (e.g. scripts\\run-analyze.cmd C:\\path\\to\\src) "
+                        + "or use --path=C:\\path without stray quotes. Value was: " + value);
+            }
+            if (value.isEmpty()) {
+                throw new IllegalArgumentException("Empty value for " + flag);
+            }
+            return value;
+        }
+
+        private static String stripOuterQuotes(String value) {
+            if (value.length() >= 2 && value.charAt(0) == '"' && value.charAt(value.length() - 1) == '"') {
+                return value.substring(1, value.length() - 1);
+            }
+            if (value.endsWith("\"")) {
+                return value.substring(0, value.length() - 1).trim();
+            }
+            if (value.startsWith("\"")) {
+                return value.substring(1).trim();
             }
             return value;
         }
