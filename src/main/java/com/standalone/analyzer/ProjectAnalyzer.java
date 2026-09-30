@@ -203,12 +203,22 @@ public final class ProjectAnalyzer {
         PathGlobFilter filter = new PathGlobFilter(fs, scan.includeGlobs(), scan.excludeGlobs());
         List<Path> result = new ArrayList<>();
         int[] skipped = {0};
+        int[] skippedIgnoredDirs = {0};
         Files.walkFileTree(root, new SimpleFileVisitor<>() {
             @Override
             public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
-                Path name = dir.getFileName();
-                boolean ignored = !dir.equals(root) && name != null && IGNORED_DIRECTORIES.contains(name.toString());
-                return ignored ? FileVisitResult.SKIP_SUBTREE : FileVisitResult.CONTINUE;
+                if (!dir.equals(root)) {
+                    if (shouldSkipAsBuildOutputDirectory(root, dir)) {
+                        skippedIgnoredDirs[0]++;
+                        return FileVisitResult.SKIP_SUBTREE;
+                    }
+                    Path probe = dir.resolve("__analyzer_probe__.java");
+                    if (!filter.accept(root, probe)) {
+                        skippedIgnoredDirs[0]++;
+                        return FileVisitResult.SKIP_SUBTREE;
+                    }
+                }
+                return FileVisitResult.CONTINUE;
             }
 
             @Override
@@ -230,7 +240,31 @@ public final class ProjectAnalyzer {
             }
         });
         Collections.sort(result);
+        if (skippedIgnoredDirs[0] > 0) {
+            System.err.println("[STANDALONE] Skipped " + skippedIgnoredDirs[0]
+                    + " directory subtree(s) (build outputs / exclude globs)");
+        }
         return new FileDiscovery(result, skipped[0]);
+    }
+
+    /**
+     * Skip {@code target/build/dist/...} trees but not package segments such as
+     * {@code src/main/java/com/acme/build/util}.
+     */
+    static boolean shouldSkipAsBuildOutputDirectory(Path scanRoot, Path dir) {
+        Path name = dir.getFileName();
+        if (name == null || !IGNORED_DIRECTORIES.contains(name.toString())) {
+            return false;
+        }
+        String relative = scanRoot.relativize(dir).toString().replace('\\', '/');
+        return !isUnderJavaSourceTree(relative);
+    }
+
+    static boolean isUnderJavaSourceTree(String relativeUnixPath) {
+        return relativeUnixPath.contains("/src/main/java/")
+                || relativeUnixPath.contains("/src/test/java/")
+                || relativeUnixPath.startsWith("src/main/java/")
+                || relativeUnixPath.startsWith("src/test/java/");
     }
 
     private static String relativePath(Path base, Path file) {

@@ -7,7 +7,9 @@ import com.github.javaparser.ast.body.CallableDeclaration;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import com.github.javaparser.ast.body.ConstructorDeclaration;
 import com.github.javaparser.ast.body.EnumDeclaration;
+import com.github.javaparser.ast.body.InitializerDeclaration;
 import com.github.javaparser.ast.body.MethodDeclaration;
+import com.github.javaparser.ast.body.RecordDeclaration;
 import com.github.javaparser.ast.body.TypeDeclaration;
 import com.github.javaparser.ast.expr.BinaryExpr;
 import com.github.javaparser.ast.expr.ConditionalExpr;
@@ -93,6 +95,39 @@ public class ComplexityVisitor extends VoidVisitorAdapter<Void> {
     @Override
     public void visit(EnumDeclaration n, Void arg) {
         analyseType(n, "ENUM", () -> super.visit(n, arg));
+    }
+
+    @Override
+    public void visit(RecordDeclaration n, Void arg) {
+        analyseType(n, "RECORD", () -> super.visit(n, arg));
+    }
+
+    @Override
+    public void visit(InitializerDeclaration n, Void arg) {
+        TypeContext owner = typeStack.peek();
+        if (owner == null) {
+            super.visit(n, arg);
+            return;
+        }
+        BlockStmt body = n.getBody();
+        MethodContext context = new MethodContext();
+        methodStack.push(context);
+        try {
+            body.accept(this, arg);
+        } finally {
+            methodStack.pop();
+        }
+        int start = beginLine(n);
+        int end = endLine(n);
+        int loc = countCodeLines(start, end);
+        String name = n.isStatic() ? "<static-init>" : "<instance-init>";
+        String kind = n.isStatic() ? "STATIC_INITIALIZER" : "INSTANCE_INITIALIZER";
+        Assessment risk = riskCalculator.assessMethod(context.cyclomatic, loc, context.maxDepth, 0);
+        owner.methods.add(new MethodMetric(
+                name, kind, name + "()", start, end,
+                context.cyclomatic, Math.max(0, end - start + 1), loc, countStatements(body),
+                context.maxDepth, 0, false, risk.score(), risk.level(), risk.factors(),
+                risk.breakdown(), "", List.of()));
     }
 
     private void analyseType(TypeDeclaration<?> declaration, String kind, Runnable descend) {

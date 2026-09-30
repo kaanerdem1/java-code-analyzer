@@ -4,7 +4,9 @@ import java.nio.file.FileSystem;
 import java.nio.file.Path;
 import java.nio.file.PathMatcher;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 /** Relative path glob include/exclude (monorepo filtreleri). */
 final class PathGlobFilter {
@@ -19,9 +21,8 @@ final class PathGlobFilter {
 
     boolean accept(Path scanRoot, Path file) {
         String relative = scanRoot.relativize(file).toString().replace('\\', '/');
-        Path relativePath = Path.of(relative);
         for (PathMatcher exclude : excludes) {
-            if (exclude.matches(relativePath)) {
+            if (matches(exclude, relative)) {
                 return false;
             }
         }
@@ -29,17 +30,43 @@ final class PathGlobFilter {
             return true;
         }
         for (PathMatcher include : includes) {
-            if (include.matches(relativePath)) {
+            if (matches(include, relative)) {
                 return true;
             }
         }
         return false;
     }
 
+    /** Match relative path and root-anchored form ({@code /src/...}) for git-style globs. */
+    static boolean matches(PathMatcher matcher, String relativeUnixPath) {
+        if (matcher.matches(Path.of(relativeUnixPath))) {
+            return true;
+        }
+        if (!relativeUnixPath.startsWith("/")) {
+            return matcher.matches(Path.of("/" + relativeUnixPath));
+        }
+        return false;
+    }
+
     private static List<PathMatcher> compile(FileSystem fs, List<String> globs) {
-        List<PathMatcher> matchers = new ArrayList<>();
+        Set<String> patterns = new LinkedHashSet<>();
         for (String glob : globs) {
-            String pattern = glob.contains("*") || glob.contains("?") ? "glob:" + glob : "glob:**/" + glob + "/**";
+            String trimmed = glob.trim();
+            if (trimmed.isEmpty()) {
+                continue;
+            }
+            if (trimmed.contains("*") || trimmed.contains("?")) {
+                patterns.add("glob:" + trimmed);
+                if (trimmed.startsWith("**/")) {
+                    patterns.add("glob:" + trimmed.substring(3));
+                }
+            } else {
+                patterns.add("glob:**/" + trimmed + "/**");
+                patterns.add("glob:" + trimmed + "/**");
+            }
+        }
+        List<PathMatcher> matchers = new ArrayList<>(patterns.size());
+        for (String pattern : patterns) {
             matchers.add(fs.getPathMatcher(pattern));
         }
         return matchers;
