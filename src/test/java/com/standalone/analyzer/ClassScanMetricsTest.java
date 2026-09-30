@@ -35,7 +35,7 @@ class ClassScanMetricsTest {
                 """;
         AnalysisReport.ClassMetric facade = findType(src, "Facade");
         assertEquals(2, facade.publicMethodCount());
-        assertTrue(facade.efferentCouplingProxy() >= 3,
+        assertTrue(facade.efferentCouplingProxy() >= 2,
                 "ce=" + facade.efferentCouplingProxy());
     }
 

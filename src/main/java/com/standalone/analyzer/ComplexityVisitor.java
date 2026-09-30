@@ -74,6 +74,7 @@ public class ComplexityVisitor extends VoidVisitorAdapter<Void> {
     private final Deque<MethodContext> methodStack = new ArrayDeque<>();
     private final List<ClassMetric> completedTypes = new ArrayList<>();
     private CompilationUnit currentCompilationUnit;
+    private ImportTypeIndex importIndex;
 
     public ComplexityVisitor(RiskCalculator riskCalculator, BitSet codeLines) {
         this.riskCalculator = riskCalculator;
@@ -97,6 +98,7 @@ public class ComplexityVisitor extends VoidVisitorAdapter<Void> {
     @Override
     public void visit(CompilationUnit n, Void arg) {
         currentCompilationUnit = n;
+        importIndex = ImportTypeIndex.of(n);
         super.visit(n, arg);
     }
 
@@ -248,7 +250,8 @@ public class ComplexityVisitor extends VoidVisitorAdapter<Void> {
         }
         MethodContext context = methodStack.peek();
         if (context != null) {
-            context.outboundCallKeys.add(OutboundCallKeys.objectCreation(n));
+            OutboundCallKeys.externalCreationKey(n, outboundContext())
+                    .ifPresent(key -> context.outboundCallKeys.add(key));
         }
         super.visit(n, arg);
     }
@@ -305,7 +308,7 @@ public class ComplexityVisitor extends VoidVisitorAdapter<Void> {
                 .map(VariableDeclarator::getNameAsString)
                 .orElse("<field-lambda>");
         String signature = fieldName + "=<lambda> @" + start;
-        owner.methods.add(buildMethodMetric(fieldName, "FIELD_LAMBDA", signature, start, end,
+        owner.methods.add(buildMethodMetric(null, fieldName, "FIELD_LAMBDA", signature, start, end,
                 null, 0, context, owner, lambda.getBody()));
     }
 
@@ -340,6 +343,9 @@ public class ComplexityVisitor extends VoidVisitorAdapter<Void> {
     private void analyseCallable(CallableDeclaration<?> declaration, String kind, BlockStmt body,
                                  Runnable descend) {
         MethodContext context = new MethodContext();
+        if (importIndex != null) {
+            context.localReceiverTypes = LocalReceiverTypes.forCallable(declaration, importIndex);
+        }
         methodStack.push(context);
         try {
             descend.run();
@@ -361,31 +367,40 @@ public class ComplexityVisitor extends VoidVisitorAdapter<Void> {
         if (owner.anonymous) {
             signature = signature + " @" + start;
         }
-        owner.methods.add(buildMethodMetric(declaration.getNameAsString(), kind, signature, start, end,
+        owner.methods.add(buildMethodMetric(declaration, declaration.getNameAsString(), kind, signature, start, end,
                 body, parameterCount, context, owner));
     }
 
     private MethodMetric buildMethodMetric(String name, String kind, String signature, int start, int end,
                                            BlockStmt body, int parameterCount, MethodContext context,
                                            TypeContext owner) {
-        return buildMethodMetric(name, kind, signature, start, end, body, parameterCount, context, owner, body);
+        return buildMethodMetric(null, name, kind, signature, start, end, body, parameterCount, context, owner, body);
     }
 
-    private MethodMetric buildMethodMetric(String name, String kind, String signature, int start, int end,
-                                           BlockStmt body, int parameterCount, MethodContext context,
-                                           TypeContext owner, Node cognitiveRoot) {
+    private MethodMetric buildMethodMetric(CallableDeclaration<?> declaration, String name, String kind,
+                                           String signature, int start, int end, BlockStmt body, int parameterCount,
+                                           MethodContext context, TypeContext owner) {
+        return buildMethodMetric(declaration, name, kind, signature, start, end, body, parameterCount, context, owner,
+                body);
+    }
+
+    private MethodMetric buildMethodMetric(CallableDeclaration<?> declaration, String name, String kind,
+                                           String signature, int start, int end, BlockStmt body, int parameterCount,
+                                           MethodContext context, TypeContext owner, Node cognitiveRoot) {
         int endLine = end;
         int loc = countCodeLines(start, endLine);
         Node root = cognitiveRoot != null ? cognitiveRoot : body;
         int cognitive = CognitiveComplexity.of(root);
         int statements = body != null ? countStatements(body) : 0;
+        int primitiveObsession = MethodQualityMetrics.primitiveObsessionIndex(declaration, root);
+        int maxBooleanOps = MethodQualityMetrics.maxBooleanOperatorsInCondition(root);
         MethodScanValues scan = new MethodScanValues(
                 context.cyclomatic, loc, context.maxDepth, parameterCount, cognitive, statements,
                 context.exitPoints, context.catchClauses, context.switchCases,
                 context.outboundCallKeys.size(), context.lambdaCount, context.maxTryDepth,
                 context.localVariableCount, context.maxMethodCallChainLength,
                 context.emptyCatchBlocks, context.catchExceptionOrThrowable,
-                context.catchWithOnlyPrintStackTrace);
+                context.catchWithOnlyPrintStackTrace, primitiveObsession, maxBooleanOps);
         Assessment risk = riskCalculator.assessMethod(scan);
         boolean god = riskCalculator.isGodMethod(scan);
         return new MethodMetric(
@@ -395,7 +410,7 @@ public class ComplexityVisitor extends VoidVisitorAdapter<Void> {
                 context.outboundCallKeys.size(), context.lambdaCount, context.maxTryDepth,
                 context.localVariableCount, context.maxMethodCallChainLength,
                 context.emptyCatchBlocks, context.catchExceptionOrThrowable,
-                context.catchWithOnlyPrintStackTrace,
+                context.catchWithOnlyPrintStackTrace, primitiveObsession, maxBooleanOps,
                 context.maxDepth, parameterCount, god, risk.score(), risk.level(), risk.factors(),
                 risk.breakdown());
     }
@@ -502,7 +517,8 @@ public class ComplexityVisitor extends VoidVisitorAdapter<Void> {
     public void visit(MethodCallExpr n, Void arg) {
         MethodContext context = methodStack.peek();
         if (context != null) {
-            context.outboundCallKeys.add(OutboundCallKeys.methodCall(n));
+            OutboundCallKeys.externalCallKey(n, outboundContext())
+                    .ifPresent(key -> context.outboundCallKeys.add(key));
             context.maxMethodCallChainLength = Math.max(context.maxMethodCallChainLength,
                     OutboundCallKeys.methodCallChainLength(n));
         }
@@ -635,6 +651,16 @@ public class ComplexityVisitor extends VoidVisitorAdapter<Void> {
         return type.asString();
     }
 
+    private OutboundCallContext outboundContext() {
+        TypeContext type = typeStack.peek();
+        if (type == null || importIndex == null) {
+            return null;
+        }
+        MethodContext method = methodStack.peek();
+        var locals = method == null ? java.util.Map.<String, String>of() : method.localReceiverTypes;
+        return OutboundCallContext.forEnclosingType(type.name, importIndex, locals);
+    }
+
     private static int beginLine(Node node) {
         return node.getBegin().map(position -> position.line).orElse(0);
     }
@@ -644,6 +670,7 @@ public class ComplexityVisitor extends VoidVisitorAdapter<Void> {
     }
 
     private static final class MethodContext {
+        private java.util.Map<String, String> localReceiverTypes = java.util.Map.of();
         private int cyclomatic = 1;          // base score
         private int depth = 0;
         private int maxDepth = 0;

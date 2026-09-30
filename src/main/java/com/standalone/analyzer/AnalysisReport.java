@@ -13,7 +13,8 @@ public record AnalysisReport(
         Summary summary,
         List<RiskHotspot> topRiskyMethods,
         List<FileMetric> files,
-        List<FileError> errors) {
+        List<FileError> errors,
+        ScanDiagnostics scanDiagnostics) {
 
     /** Documents the composite score so JSON can be compared with PMD rule output. */
     public record RiskModel(
@@ -42,7 +43,21 @@ public record AnalysisReport(
             /** KRİTİK metod sayısı / KLOC. */
             double criticalMethodsPerKloc,
             double methodRiskScoreP95,
-            double methodRiskScoreP99) {
+            double methodRiskScoreP99,
+            List<ModuleRiskSummary> moduleSummaries) {
+
+        public Summary {
+            moduleSummaries = moduleSummaries == null ? List.of() : List.copyOf(moduleSummaries);
+        }
+    }
+
+    public record ModuleRiskSummary(
+            String moduleRoot,
+            int methodCount,
+            int codeLines,
+            double locWeightedRiskScore,
+            double methodRiskScoreP95,
+            double criticalMethodsPerKloc) {
     }
 
     public record FileMetric(
@@ -96,6 +111,10 @@ public record AnalysisReport(
             List<String> riskFactors) {
     }
 
-    public record FileError(String file, String message) {
+    public record FileError(String file, String message, ScanErrorCategory category) {
+
+        public FileError(String file, String message) {
+            this(file, message, ScanErrorClassifier.classify(message));
+        }
     }
 }

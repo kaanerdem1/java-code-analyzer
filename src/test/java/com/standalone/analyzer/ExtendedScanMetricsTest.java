@@ -56,6 +56,11 @@ class ExtendedScanMetricsTest {
         String src = """
                 package demo;
                 class Orchestrator {
+                    OrderRepo orderRepo;
+                    KafkaClient kafka;
+                    AuditTrail audit;
+                    NestHelper helper;
+                    java.util.List<String> list;
                     void run(Order o) {
                         orderRepo.save(o);
                         kafka.send(o.id());
@@ -74,6 +79,13 @@ class ExtendedScanMetricsTest {
                         list.stream().map(x -> x.toString()).forEach(System.out::println);
                     }
                 }
+                interface OrderRepo { void save(Order o); }
+                interface KafkaClient { void send(String id); }
+                interface AuditTrail { void log(Order o); }
+                class NestHelper { void nest() {} }
+                class Order { String id() { return ""; } Line getLine() { return null; } }
+                class Line { Sku getSku() { return null; } }
+                class Sku { String getCode() { return ""; } }
                 """;
         MethodMetric run = findMethod(src, "run");
         assertTrue(run.outboundDistinctCalls() >= 5,

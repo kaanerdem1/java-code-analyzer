@@ -57,6 +57,7 @@ Modern kodda bu, "rapor temiz görünüyor" ama aslında eksik demektir.
 **Küçük ama işe yarar**
 
 - **Çıkış kodu:** Dosyaların hepsi hata verse bile run 0 döner. --max-failure-ratio ve --fail-on-risk ile 2/3 gibi çıkış kodları ver, CI'da işe yarar.
+- **Hata yönetimi:** Konsol `--- Tarama tanıları ---`, Markdown `## Tarama tanıları` + `docs/scan-error-management.md` (unexpected token senaryoları, karışık Java sürümleri).
 - **Locale:** ComplexityVisitor'da Türkçe locale'e dikkat etmişsin (Locale.ROOT), ama ScanOptionsParser.parseDetail, LanguageLevelOption.parse ve ReadableReportMain (toLowerCase()/toUpperCase()) hâlâ varsayılan locale kullanıyor. Şu an değerlerde i olmadığı için patlamıyor, ama tutarlı olsun.
 - **Tek kaynak:** Eşikler ve ağırlıklar RiskCalculator, AnalysisConsoleLogger (sabit yazı), buildRiskModel ve Markdown'da ayrı ayrı yazılı. Biri değişince diğerleri sessizce yalan söyler. Hepsini RiskCalculator sabitlerinden üret.
 - **PmdXmlMarkdown:** DOM ile tüm XML'i yüklüyor (büyük repoda StAX daha uygun), shortenPath içinde "mock-modules/" sabit kalmış (gerçek projede uzun mutlak yol çıkar), beginline yoksa parseInt patlar.

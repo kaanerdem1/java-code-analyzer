@@ -31,9 +31,9 @@ class ScanExitEvaluatorTest {
         }
         AnalysisReport.Summary summary = new AnalysisReport.Summary(
                 scanned, scanned - failed, failed, 0, 0, 0, 0.0, 0, 0,
-                0.5, projectLevel, dist, 0.0, 0.0, 0.5, 0.5);
+                0.5, projectLevel, dist, 0.0, 0.0, 0.5, 0.5, List.of());
         return new AnalysisReport("t", "now", "/", "JAVA_17",
                 new AnalysisReport.RiskModel("v2", "f", Map.of(), Map.of()),
-                summary, List.of(), List.of(), List.of());
+                summary, List.of(), List.of(), List.of(), null);
     }
 }

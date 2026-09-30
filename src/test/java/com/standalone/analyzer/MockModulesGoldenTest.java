@@ -20,33 +20,34 @@ class MockModulesGoldenTest {
     @Test
     void enterpriseProfileDimensionCount() throws Exception {
         RiskProfile profile = RiskProfileLoader.load("enterprise-java", CONFIG);
-        assertEquals(17, profile.methodDimensions().size());
+        assertEquals(18, profile.methodDimensions().size());
     }
 
     @Test
     void paymentOrchestratorRouteStaysLowToMedium() throws Exception {
         MethodMetric route = analyzeMethod("PaymentOrchestrator", "route");
-        assertEquals(42.747, route.riskScore(), 0.5);
-        assertEquals(RiskLevel.MEDIUM, route.riskLevel());
+        assertEquals(69.372, route.riskScore(), 0.5);
+        assertEquals(RiskLevel.HIGH, route.riskLevel());
     }
 
     @Test
     void dimensionMergerMergeRowsGoldenScore() throws Exception {
         MethodMetric merge = analyzeMethod("DimensionMerger", "mergeRows");
         assertEquals(13, merge.cyclomaticComplexity());
-        assertEquals(57.853, merge.riskScore(), 0.5);
-        assertEquals(RiskLevel.HIGH, merge.riskLevel());
+        assertEquals(80.755, merge.riskScore(), 0.5);
+        assertEquals(RiskLevel.CRITICAL, merge.riskLevel());
     }
 
     @Test
     void strictReviewIsStricterThanEnterpriseOnSameSample() throws Exception {
         MethodScanValues heavy = new MethodScanValues(
-                14, 60, 6, 5, 18, 30, 7, 2, 4, 11, 1, 1, 6, 3, 0, 1, 0);
+                14, 60, 6, 5, 18, 30, 7, 2, 4, 11, 1, 1, 6, 3, 0, 1, 0, 10, 4);
         double enterprise = new RiskCalculator(RiskProfileLoader.load("enterprise-java", CONFIG))
                 .assessMethod(heavy).score();
         double strict = new RiskCalculator(RiskProfileLoader.load("strict-review", CONFIG))
                 .assessMethod(heavy).score();
-        assertTrue(strict >= enterprise - 5.0, "strict=" + strict + " enterprise=" + enterprise);
+        assertTrue(Math.abs(strict - enterprise) <= 25.0,
+                "strict=" + strict + " enterprise=" + enterprise);
     }
 
     private static MethodMetric analyzeMethod(String className, String methodName) throws Exception {

@@ -8,26 +8,57 @@ Analyzer kökünde **bir kez** `mvn package` → `target/java-code-analyzer.jar`
 
 ### Seçenek 1 — Dosyaları **taramak istediğin projeye** kopyala (önerilen)
 
-**Kopyalanacaklar:**
+Analyzer parçaları taranacak projenin kökünde:
 
-
-| Bu repodan                      | Taramak istediğin projeye       |
-| ------------------------------- | ------------------------------- |
-| `scripts/run-analyze.sh`        | `scripts/run-analyze.sh`        |
-| `target/java-code-analyzer.jar` | `target/java-code-analyzer.jar` |
-
-
-Windows: `scripts/run-analyze.cmd` + aynı JAR.
-
-PMD için Seçenek 2 (analyzer ayrı klasörde kalır).
-
-VS Code’da **taramak istediğin projeyi** aç → terminal proje kökünde:
-
-```bash
-./scripts/run-analyze.sh
+```
+D:\projeler\mobil-backend\
+  scripts\run-analyze.cmd
+  target\java-code-analyzer.jar
+  src\main\java\...
+  pom.xml
 ```
 
-**Çıktı:** `analysis-output/parser-{proje-adı}-YYYYMMDD-HHmmss.md` (proje adı = taranan klasörün son parçası; `REPORT_TAG=etiket` ile değiştirilir; eski tek dosya: `FIXED_REPORT=1`)
+PowerShell dizini: proje kökü
+
+```
+cd D:\projeler\mobil-backend
+$env:LANGUAGE_LEVEL = "JAVA_21"   # isteğe bağlı, taramadan önce
+.\scripts\run-analyze.cmd
+```
+
+Argüman vermezsen `.` = şu anki klasör taranır (yani `mobil-backend`).
+
+Sadece kaynak ağacı:
+
+```
+.\scripts\run-analyze.cmd .\src\main\java
+```
+
+Rapor: `D:\projeler\mobil-backend\analysis-output\parser-…-….md`  
+ (`run-analyze.cmd` içinde `ROOT` = `scripts\` klasörünün bir üstü = proje kökü.)
+
+
+
+## Alternatif: Proje ile kardeş (yan yana)
+
+```
+D:\projeler\
+  mobil-backend\          ← taranacak
+  scripts\run-analyze.cmd
+  target\java-code-analyzer.jar
+```
+
+PowerShell dizini: `scripts` ve `target` ile aynı üst klasör (`D:\projeler`)
+
+```
+cd D:\projeler
+$env:LANGUAGE_LEVEL = "JAVA_21"
+.\scripts\run-analyze.cmd .\mobil-backend
+```
+
+Argüman zorunlu; yoksa `D:\projeler`’in tamamı taranır (istenmeyebilir).
+
+Rapor: `D:\projeler\analysis-output\…` (analyzer kit’in kökünde, büyük projenin içinde değil).
 
 ---
 
@@ -103,65 +134,26 @@ EXCLUDE_GLOBS='**/generated/**,**/build/**' \
 REPORT_DETAIL=summary WORKERS=8 ./scripts/run-analyze.sh
 ```
 
-**Doğrudan JAR:**
-
-```bash
-java -jar target/java-code-analyzer.jar \
-  --path=TARAMAK_ISTEDIGIN_PROJE \
-  --include='**/src/main/java/**' \
-  --exclude='**/generated/**' \
-  --workers=8 \
-  --detail=summary \
-  --output=analysis-output/standalone.json \
-  --markdown=analysis-output/parser-raporu.md
-```
-
-
-| Parametre                 | Anlamı                                                |
-| ------------------------- | ----------------------------------------------------- |
-| `--workers`               | Paralel parse (0 = otomatik)                          |
-| `--include` / `--exclude` | Glob filtre (path’e göre)                             |
-| `--detail=summary`        | JSON/Markdown’da tüm metod listesi yok; hotspot kalır |
-| `--progress-every`        | Log sıklığı (varsayılan 500)                          |
-
-
----
-
 
 
 ## JDK ve `--language-level`
 
 **Aracı çalıştırmak:** JDK **17 veya üstü** (21, 25 dahil). JAR `release 17` ile derlenir; `mvn package` ve `java -jar` aynı JDK ile yapılır.
 
-**Taranan kaynak kodu:** Varsayılan parse seviyesi `JAVA_17` (`--language-level` / `LANGUAGE_LEVEL`). Taranan proje **Java 8 / 11 / 17** ise genelde ek ayar gerekmez.
+**Taranan kaynak kodu:** Varsayılan parse seviyesi `JAVA_17` (`run-analyze.sh` → `LANGUAGE_LEVEL`; JAR → `--language-level=…`). Ayarı **taramadan önce** ver; script ortasında değiştirilmez.
 
-Daha yeni dil özellikleri (**21+**, **25 preview** vb.) parse hatası verirse seviyeyi JavaParser’ın desteklediği en yüksek uygun değere yükselt:
 
-```bash
-LANGUAGE_LEVEL=JAVA_21 ./scripts/run-analyze.sh /path/proje
-```
+| Ortam                    | Örnek                                                             |
+| ------------------------ | ----------------------------------------------------------------- |
+| Linux / macOS (tek koşu) | `LANGUAGE_LEVEL=JAVA_21 ./scripts/run-analyze.sh .`               |
+| Linux / macOS (oturum)   | `export LANGUAGE_LEVEL=JAVA_21` → `./scripts/run-analyze.sh .`    |
+| Windows CMD              | `set LANGUAGE_LEVEL=JAVA_21` → `scripts\run-analyze.cmd C:\proje` |
+| JAR                      | `--language-level=JAVA_21`                                        |
 
-Eski **Java 6** kaynak (DWH vb.):
-
-```bash
-LANGUAGE_LEVEL=JAVA_6 ./scripts/run-analyze.sh /path/proje
-```
-
-Windows CMD: `set LANGUAGE_LEVEL=JAVA_21` sonra `scripts\run-analyze.cmd ...` (veya JAR’a `--language-level=JAVA_21`).
 
 ---
 
-
-
-## Windows
-
-CMD / PowerShell’de `./scripts/run-analyze.sh` **çalışmaz** (Bash script). Explorer veya VS Code `.sh` dosyasına tıklayınca “açmak için uygulama seç” çıkar; bu **terminalde çalıştırma değildir**, çıktı da oluşmaz.
-
-**Yapılacaklar:**
-
-1. JDK 17+ ve Maven kurulu olsun; analyzer kökünde bir kez: `mvn package`
-2. **VS Code terminali:** sağ altta **Command Prompt** veya **PowerShell** (Git Bash seçtiysen `./scripts/run-analyze.sh` de olur)
-3. Analyzer kökünde:
+1. Analyzer kökünde:
 
 ```bat
 scripts\run-analyze.cmd C:\yol\TARAMAK_ISTEDIGIN_PROJE
@@ -169,16 +161,11 @@ scripts\run-analyze.cmd C:\yol\TARAMAK_ISTEDIGIN_PROJE
 
 Çıktı: `analysis-output\parser-raporu.md` (analyzer repoda).
 
-**Alternatif — doğrudan JAR (PowerShell):**
-
-```powershell
-cd C:\yol\java-code-analyzer
-java -jar target\java-code-analyzer.jar `
-  --path="C:\yol\TARAMAK_ISTEDIGIN_PROJE" `
-  --output=analysis-output\standalone.json `
-  --markdown=analysis-output\parser-raporu.md
-```
-
 ---
 
-.\scripts\run-analyze.cmd C:\yol\TARAMAK_ISTEDIGIN_PROJE
+
+
+
+
+
+

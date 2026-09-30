@@ -32,6 +32,8 @@ public record MethodMetric(
         int emptyCatchBlocks,
         int catchExceptionOrThrowable,
         int catchWithOnlyPrintStackTrace,
+        int primitiveObsessionIndex,
+        int maxBooleanOperatorsInCondition,
         int maxNestingDepth,
         int parameterCount,
         boolean godMethod,

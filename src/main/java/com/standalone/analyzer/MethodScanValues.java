@@ -18,10 +18,12 @@ public record MethodScanValues(
         int maxMethodCallChainLength,
         int emptyCatchBlocks,
         int catchExceptionOrThrowable,
-        int catchWithOnlyPrintStackTrace) {
+        int catchWithOnlyPrintStackTrace,
+        int primitiveObsessionIndex,
+        int maxBooleanOperatorsInCondition) {
 
     static MethodScanValues zeros(int cyclomatic, int codeLines, int nesting, int parameters) {
         return new MethodScanValues(cyclomatic, codeLines, nesting, parameters,
-                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
     }
 }

@@ -30,10 +30,18 @@ public final class ScanMetricsCalibration {
             System.exit(1);
         }
         Path root = Path.of(args[0]);
+        System.out.print(renderMarkdown(analyzeRoot(root), root));
+    }
+
+    static AnalysisReport analyzeRoot(Path root) throws IOException {
+        Path config = Path.of("config/risk-parameters-proposal.yaml");
+        RiskProfile profile = RiskProfileLoader.load("enterprise-java", config);
+        ScanOptions options = new ScanOptions(1, 500, List.of(), List.of("**/src/test/**"),
+                ScanOptions.ReportDetail.FULL, true);
         ProjectAnalyzer analyzer = new ProjectAnalyzer(StandardCharsets.UTF_8, 5,
-                com.github.javaparser.ParserConfiguration.LanguageLevel.JAVA_17);
-        AnalysisReport report = analyzer.analyze(root);
-        System.out.print(renderMarkdown(report, root));
+                com.github.javaparser.ParserConfiguration.LanguageLevel.JAVA_17, options,
+                new RiskCalculator(profile));
+        return analyzer.analyze(root);
     }
 
     static String renderMarkdown(AnalysisReport report, Path root) {
@@ -57,6 +65,9 @@ public final class ScanMetricsCalibration {
                 PercentileStats.fromRecords("catchClauses", methods, MethodMetric::catchClauses),
                 PercentileStats.fromRecords("switchCases", methods, MethodMetric::switchCases),
                 PercentileStats.fromRecords("outboundDistinctCalls", methods, MethodMetric::outboundDistinctCalls),
+                PercentileStats.fromRecords("primitiveObsessionIndex", methods, MethodMetric::primitiveObsessionIndex),
+                PercentileStats.fromRecords("maxBooleanOperatorsInCondition", methods,
+                        MethodMetric::maxBooleanOperatorsInCondition),
                 PercentileStats.fromRecords("lambdaCount", methods, MethodMetric::lambdaCount),
                 PercentileStats.fromRecords("maxTryNestingDepth", methods, MethodMetric::maxTryNestingDepth),
                 PercentileStats.fromRecords("localVariableCount", methods, MethodMetric::localVariableCount),
@@ -89,7 +100,8 @@ public final class ScanMetricsCalibration {
         md.append("\n## Sınıf\n\n");
         md.append(PercentileStats.markdownTable(classRows));
         md.append("\n");
-        md.append("Not: `enterprise-java` eşikleri bu tabloya göre Faz 5'te `config/risk-parameters-proposal.yaml` içinde kilitle.\n");
+        md.append(PercentileStats.yamlThresholdBlock(methodRows, PercentileStats.enterpriseJavaMetricKeys()));
+        md.append("\nNot: FOUT artık import-aware + JDK/same-type filtreli; eşikleri bu tabloya göre güncelle.\n");
         return md.toString();
     }
 }

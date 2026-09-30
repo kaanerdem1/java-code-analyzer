@@ -56,6 +56,8 @@ final class RiskBreakdownUtil {
             case "emptyCatchBlocks" -> "boş catch";
             case "catchExceptionOrThrowable" -> "geniş catch";
             case "catchWithOnlyPrintStackTrace" -> "printStackTrace catch";
+            case "primitiveObsessionIndex" -> "primitive obsession";
+            case "maxBooleanOperatorsInCondition" -> "complex conditional";
             default -> driverId;
         };
     }

@@ -15,14 +15,16 @@ import java.util.concurrent.atomic.LongAdder;
 final class ScanAccumulator {
 
     private final int topN;
+    private final ModuleRootIndex moduleRoots;
     private final ProjectSummaryStats summaryStats = new ProjectSummaryStats();
     private final LongAdder classCount = new LongAdder();
     private final LongAdder totalCodeLines = new LongAdder();
     private final PriorityQueue<RiskHotspot> hotspotHeap;
     private final Object statsLock = new Object();
 
-    ScanAccumulator(int topN) {
+    ScanAccumulator(int topN, ModuleRootIndex moduleRoots) {
         this.topN = Math.max(1, topN);
+        this.moduleRoots = moduleRoots;
         this.hotspotHeap = new PriorityQueue<>(Comparator
                 .comparingDouble(RiskHotspot::riskScore)
                 .thenComparingInt(RiskHotspot::cyclomaticComplexity));
@@ -31,9 +33,10 @@ final class ScanAccumulator {
     void ingestFile(String relativePath, String packageName, List<ClassMetric> classes, int fileCodeLines) {
         totalCodeLines.add(fileCodeLines);
         classCount.add(classes.size());
+        String moduleRoot = moduleRoots.moduleRoot(relativePath);
         for (ClassMetric type : classes) {
             for (MethodMetric method : type.methods()) {
-                summaryStats.addMethod(method);
+                summaryStats.addMethod(moduleRoot, method);
                 offerHotspot(new RiskHotspot(
                         relativePath, packageName, type.name(), method.signature(), method.startLine(),
                         method.riskScore(), method.riskLevel(), method.cyclomaticComplexity(),

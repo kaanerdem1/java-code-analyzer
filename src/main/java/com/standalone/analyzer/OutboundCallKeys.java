@@ -1,27 +1,47 @@
 package com.standalone.analyzer;
 
+import com.github.javaparser.ast.expr.ClassExpr;
 import com.github.javaparser.ast.expr.Expression;
 import com.github.javaparser.ast.expr.FieldAccessExpr;
 import com.github.javaparser.ast.expr.MethodCallExpr;
+import com.github.javaparser.ast.expr.NameExpr;
 import com.github.javaparser.ast.expr.ObjectCreationExpr;
-
 import java.util.Optional;
 
-/** Heuristic keys for distinct outbound calls (no symbol resolution). */
+/** External outbound call keys (import-aware, JDK/same-type filtered). */
 final class OutboundCallKeys {
 
     private OutboundCallKeys() {
     }
 
-    static String methodCall(MethodCallExpr call) {
-        String method = call.getNameAsString();
-        return call.getScope()
-                .map(scope -> expressionLabel(scope) + "." + method)
-                .orElse("<local>." + method);
+    static Optional<String> externalCallKey(MethodCallExpr call, OutboundCallContext ctx) {
+        if (ctx == null || ctx.imports() == null) {
+            return Optional.empty();
+        }
+        if (call.getScope().isEmpty()) {
+            return Optional.empty();
+        }
+        Expression scope = call.getScope().get();
+        if (scope.isThisExpr()) {
+            return Optional.empty();
+        }
+        String receiverType = receiverType(scope, ctx);
+        if (receiverType == null || ctx.isSameType(receiverType)
+                || ImportTypeIndex.isJdkOrUtilityType(receiverType)) {
+            return Optional.empty();
+        }
+        return Optional.of(receiverType + "#" + call.getNameAsString());
     }
 
-    static String objectCreation(ObjectCreationExpr creation) {
-        return "new " + creation.getType().asString();
+    static Optional<String> externalCreationKey(ObjectCreationExpr creation, OutboundCallContext ctx) {
+        if (ctx == null || ctx.imports() == null) {
+            return Optional.empty();
+        }
+        String type = ctx.imports().resolveTypeName(creation.getType());
+        if (type == null || ctx.isSameType(type) || ImportTypeIndex.isJdkOrUtilityType(type)) {
+            return Optional.empty();
+        }
+        return Optional.of("new:" + type);
     }
 
     static int methodCallChainLength(MethodCallExpr call) {
@@ -42,34 +62,45 @@ final class OutboundCallKeys {
         return length;
     }
 
-    private static String expressionLabel(Expression expr) {
+    private static String receiverType(Expression expr, OutboundCallContext ctx) {
+        if (expr == null) {
+            return null;
+        }
         if (expr.isNameExpr()) {
-            return expr.asNameExpr().getNameAsString();
+            return ctx.resolveReceiverSimpleName(expr.asNameExpr().getNameAsString());
         }
         if (expr.isFieldAccessExpr()) {
             FieldAccessExpr field = expr.asFieldAccessExpr();
             Expression scope = field.getScope();
             if (scope != null) {
-                return expressionLabel(scope) + "." + field.getNameAsString();
+                if (scope.isNameExpr()) {
+                    String base = ctx.resolveReceiverSimpleName(scope.asNameExpr().getNameAsString());
+                    return base == null ? null : base + "." + field.getNameAsString();
+                }
+                if (scope.isClassExpr()) {
+                    return typeFromClassExpr(scope.asClassExpr());
+                }
+                return receiverType(scope, ctx);
             }
-            return field.getNameAsString();
+            return ctx.imports().resolveSimple(field.getNameAsString());
         }
         if (expr.isMethodCallExpr()) {
-            return methodCall(expr.asMethodCallExpr());
-        }
-        if (expr.isThisExpr()) {
-            return "this";
-        }
-        if (expr.isEnclosedExpr()) {
-            return expressionLabel(expr.asEnclosedExpr().getInner());
+            return receiverType(expr.asMethodCallExpr().getScope().orElse(null), ctx);
         }
         if (expr.isClassExpr()) {
-            return expr.asClassExpr().getType().asString();
+            return typeFromClassExpr(expr.asClassExpr());
+        }
+        if (expr.isEnclosedExpr()) {
+            return receiverType(expr.asEnclosedExpr().getInner(), ctx);
         }
         if (expr.isObjectCreationExpr()) {
-            return objectCreation(expr.asObjectCreationExpr());
+            return ctx.imports().resolveTypeName(expr.asObjectCreationExpr().getType());
         }
-        return expr.toString();
+        return null;
+    }
+
+    private static String typeFromClassExpr(ClassExpr classExpr) {
+        return classExpr.getType().asString();
     }
 
     private static Optional<Expression> optionalScope(Expression scope) {

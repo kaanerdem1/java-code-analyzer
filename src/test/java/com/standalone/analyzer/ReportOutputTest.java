@@ -28,7 +28,7 @@ class ReportOutputTest {
         AnalysisReportJsonWriter.write(report, jsonOut, true);
         String json = jsonOut.toString();
         assertFalse(json.contains("ancestorPath"));
-        assertFalse(json.contains("moduleRoot"));
+        assertTrue(json.contains("moduleSummaries"));
         assertTrue(json.contains("\"methods\""));
     }
 

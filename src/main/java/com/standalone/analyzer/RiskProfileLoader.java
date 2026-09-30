@@ -250,7 +250,12 @@ public final class RiskProfileLoader {
             Map.entry("catchExceptionOrThrowable",
                     new MethodDimensionSpec("Broad catch (Exception/Throwable)", MethodScanValues::catchExceptionOrThrowable)),
             Map.entry("catchWithOnlyPrintStackTrace",
-                    new MethodDimensionSpec("Catch with only printStackTrace", MethodScanValues::catchWithOnlyPrintStackTrace)));
+                    new MethodDimensionSpec("Catch with only printStackTrace", MethodScanValues::catchWithOnlyPrintStackTrace)),
+            Map.entry("primitiveObsessionIndex",
+                    new MethodDimensionSpec("Primitive obsession index", MethodScanValues::primitiveObsessionIndex)),
+            Map.entry("maxBooleanOperatorsInCondition",
+                    new MethodDimensionSpec("Complex conditional (bool ops peak)",
+                            MethodScanValues::maxBooleanOperatorsInCondition)));
 
     private static final Map<String, ClassDimensionSpec> CLASS_SPECS = Map.of(
             "publicMethodCount",

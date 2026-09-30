@@ -30,7 +30,8 @@ explainable_model:
     dominant_weight: 0.58
     blend_weight: 0.42
     note_tr: >
-      final = 58% * max(17 alt skor) + 42% * ağırlıklı ortalama + ince ayırıcı (0–100, 3 ondalık).
+      final = 58% * max(risk boyutları alt skorları) + 42% * ağırlıklı ortalama + ince ayırıcı (0–100, 3 ondalık).
+      FOUT skora dahil değildir (katalog metriği).
       Aynı ham metrik vektörü olmadıkça iki metodun skoru çakışmaz.
   blend:
     ratio: 0.42
@@ -94,65 +95,71 @@ profiles:
     policy_tr: >
       Monorepo Java servisleri (billing, ETL, katalog). Kısa metodlar normal;
       asıl alarm çok dallanma ve iç içe yapıdan gelir. LOC eşikleri mock veriye göre düşürüldü.
+      FOUT (outboundDistinctCalls) yalnızca katalog/lineage göstergesi; metod risk skoruna girmez.
     dimensions:
       branching:
-        thresholds: { dikkat: 10, yuksek: 15, kritik: 25 }
+        thresholds: { dikkat: 4, yuksek: 9, kritik: 12 }
         when_tr:
           - "CC ≤ 10 → genelde sakin servis metodu"
           - "CC 11–15 → orchestrator / kural metodu; ORTA–YÜKSEK bandı"
           - "CC > 25 → dev metod adayı"
       length:
-        thresholds: { dikkat: 25, yuksek: 55, kritik: 120 }
+        thresholds: { dikkat: 12, yuksek: 20, kritik: 27 }
         when_tr:
           - "LOC < 25 → uzunluk skoru neredeyse etkisiz (tipik facade)"
           - "LOC 55–120 → prosedürel şişme"
       nesting:
-        thresholds: { dikkat: 3, yuksek: 5, kritik: 7 }
+        thresholds: { dikkat: 1, yuksek: 3, kritik: 5 }
         when_tr:
           - "Derinlik 5 → mock p95; sık YÜKSEK uyarı"
           - "Derinlik 7+ → lasagna; extract/block refactor"
       parameters:
-        thresholds: { dikkat: 4, yuksek: 6, kritik: 8 }
+        thresholds: { dikkat: 2, yuksek: 4, kritik: 4 }
         when_tr:
           - "6+ parametre → API şişkinliği"
       cognitive:
-        thresholds: { dikkat: 10, yuksek: 15, kritik: 25 }
-      outboundDistinctCalls:
-        thresholds: { dikkat: 6, yuksek: 10, kritik: 15 }
+        thresholds: { dikkat: 3, yuksek: 15, kritik: 15 }
       exitPoints:
-        thresholds: { dikkat: 4, yuksek: 6, kritik: 9 }
+        thresholds: { dikkat: 1, yuksek: 5, kritik: 6 }
       logicalStatements:
-        thresholds: { dikkat: 15, yuksek: 25, kritik: 40 }
+        thresholds: { dikkat: 8, yuksek: 21, kritik: 21 }
       lambdaCount:
-        thresholds: { dikkat: 1, yuksek: 3, kritik: 6 }
+        thresholds: { dikkat: 0, yuksek: 0, kritik: 1 }
       switchCases:
-        thresholds: { dikkat: 3, yuksek: 6, kritik: 10 }
+        thresholds: { dikkat: 0, yuksek: 0, kritik: 3 }
       maxTryNestingDepth:
-        thresholds: { dikkat: 1, yuksek: 2, kritik: 3 }
+        thresholds: { dikkat: 0, yuksek: 0, kritik: 0 }
       localVariableCount:
-        thresholds: { dikkat: 5, yuksek: 8, kritik: 12 }
+        thresholds: { dikkat: 1, yuksek: 4, kritik: 5 }
       maxMethodCallChainLength:
-        thresholds: { dikkat: 2, yuksek: 3, kritik: 5 }
+        thresholds: { dikkat: 1, yuksek: 3, kritik: 3 }
       catchClauses:
-        thresholds: { dikkat: 1, yuksek: 2, kritik: 4 }
+        thresholds: { dikkat: 0, yuksek: 0, kritik: 0 }
       emptyCatchBlocks:
-        thresholds: { dikkat: 1, yuksek: 2, kritik: 3 }
+        thresholds: { dikkat: 0, yuksek: 0, kritik: 0 }
       catchExceptionOrThrowable:
-        thresholds: { dikkat: 1, yuksek: 2, kritik: 3 }
+        thresholds: { dikkat: 0, yuksek: 0, kritik: 0 }
       catchWithOnlyPrintStackTrace:
-        thresholds: { dikkat: 1, yuksek: 2, kritik: 3 }
+        thresholds: { dikkat: 0, yuksek: 0, kritik: 0 }
+      primitiveObsessionIndex:
+        thresholds: { dikkat: 4, yuksek: 12, kritik: 12 }
+        when_tr:
+          - "İmza: primitive/String/boolean flag parametreleri + gövdede string literal / primitive yerel"
+      maxBooleanOperatorsInCondition:
+        thresholds: { dikkat: 0, yuksek: 1, kritik: 1 }
+        when_tr:
+          - "Tek if/while koşulundaki && ve || sayısı (Checkstyle BooleanExpressionComplexity benzeri)"
     class_dimensions:
       publicMethodCount:
-        thresholds: { dikkat: 8, yuksek: 12, kritik: 20 }
+        thresholds: { dikkat: 1, yuksek: 6, kritik: 6 }
       efferentCouplingProxy:
-        thresholds: { dikkat: 8, yuksek: 12, kritik: 18 }
+        thresholds: { dikkat: 1, yuksek: 7, kritik: 12 }
     blend_weights:
       branching: 0.17
       nesting: 0.14
       length: 0.07
       parameters: 0.05
       cognitive: 0.11
-      outboundDistinctCalls: 0.08
       exitPoints: 0.04
       logicalStatements: 0.06
       lambdaCount: 0.03
@@ -164,6 +171,8 @@ profiles:
       emptyCatchBlocks: 0.03
       catchExceptionOrThrowable: 0.02
       catchWithOnlyPrintStackTrace: 0.02
+      primitiveObsessionIndex: 0.04
+      maxBooleanOperatorsInCondition: 0.04
     class_blend_weights:
       publicMethodCount: 0.5
       efferentCouplingProxy: 0.5

@@ -20,6 +20,7 @@ final class ProjectSummaryStats {
     private double weightedScoreSum;
     private long weightedLocSum;
     private int maxCyclomatic;
+    private final ModuleSummaryStats moduleSummaries = new ModuleSummaryStats();
 
     ProjectSummaryStats() {
         for (RiskLevel level : RiskLevel.values()) {
@@ -30,7 +31,8 @@ final class ProjectSummaryStats {
         }
     }
 
-    synchronized void addMethod(MethodMetric method) {
+    synchronized void addMethod(String moduleRoot, MethodMetric method) {
+        moduleSummaries.addMethod(moduleRoot, method);
         methodCount.increment();
         totalCyclomatic.add(method.cyclomaticComplexity());
         maxCyclomatic = Math.max(maxCyclomatic, method.cyclomaticComplexity());
@@ -72,7 +74,8 @@ final class ProjectSummaryStats {
                 classCount, (int) methods, totalFileCodeLines,
                 avgCc, maxCyclomatic, (int) godMethodCount.sum(),
                 projectScore, RiskLevel.fromScore(projectScore), dist,
-                highLocRatio, criticalPerKloc, percentile(0.95), percentile(0.99));
+                highLocRatio, criticalPerKloc, percentile(0.95), percentile(0.99),
+                moduleSummaries.toSummaries());
     }
 
     private double percentile(double p) {

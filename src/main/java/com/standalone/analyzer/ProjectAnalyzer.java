@@ -82,7 +82,13 @@ public final class ProjectAnalyzer {
     }
 
     public AnalysisReport analyze(Path root) throws IOException {
+        return analyze(root, new ScanRunContext());
+    }
+
+    public AnalysisReport analyze(Path root, ScanRunContext runContext) throws IOException {
         long started = System.nanoTime();
+        ScanRunContext run = runContext != null ? runContext : new ScanRunContext();
+        run.phase(ScanPhase.DISCOVERY);
         Path absoluteRoot = root.toAbsolutePath().normalize();
         Path base = Files.isDirectory(absoluteRoot) ? absoluteRoot : absoluteRoot.getParent();
 
@@ -96,17 +102,21 @@ public final class ProjectAnalyzer {
                 + ", parsing as " + languageLevel.name()
                 + ", workers=" + scanOptions.workers() + ", detail=" + scanOptions.reportDetail() + "...");
 
+        ModuleRootIndex moduleRoots = ModuleRootIndex.forScanRoot(absoluteRoot);
         ScanAccumulator summaryAccumulator =
-                scanOptions.reportDetail() == ReportDetail.SUMMARY ? new ScanAccumulator(topN) : null;
-        List<FileMetric> files = parseAll(sources, base, errors, summaryAccumulator);
+                scanOptions.reportDetail() == ReportDetail.SUMMARY
+                        ? new ScanAccumulator(topN, moduleRoots) : null;
+        run.phase(ScanPhase.PARSING);
+        List<FileMetric> files = parseAll(sources, base, errors, summaryAccumulator, run);
         Collections.sort(files, (a, b) -> a.path().compareTo(b.path()));
         errors.sort(Comparator.comparing(FileError::file));
+        run.phase(ScanPhase.REPORT_ASSEMBLY);
 
         int filesParsed = files.size();
         int filesFailed = errors.size();
         Summary summary = summaryAccumulator != null
                 ? summaryAccumulator.toSummary(sources.size(), filesParsed, filesFailed)
-                : buildSummary(sources.size(), files, errors);
+                : buildSummary(sources.size(), files, errors, moduleRoots);
         List<RiskHotspot> hotspots = summaryAccumulator != null
                 ? summaryAccumulator.topHotspots()
                 : buildHotspots(files);
@@ -114,34 +124,39 @@ public final class ProjectAnalyzer {
         long elapsedMs = (System.nanoTime() - started) / 1_000_000L;
         System.err.println("[STANDALONE] Parse wall time: " + elapsedMs + " ms");
 
-        return new AnalysisReport(TOOL_NAME, Instant.now().toString(), absoluteRoot.toString(),
-                languageLevel.name(), riskCalculator.buildRiskModel(), summary, hotspots, reportFiles, errors);
+        AnalysisReport report = new AnalysisReport(TOOL_NAME, Instant.now().toString(), absoluteRoot.toString(),
+                languageLevel.name(), riskCalculator.buildRiskModel(), summary, hotspots, reportFiles, errors, null);
+        ScanDiagnostics diagnostics = ScanDiagnostics.from(report, run, null);
+        run.phase(ScanPhase.COMPLETE);
+        return new AnalysisReport(TOOL_NAME, report.generatedAt(), report.analyzedPath(),
+                report.parserLanguageLevel(), report.riskModel(), report.summary(), report.topRiskyMethods(),
+                report.files(), report.errors(), diagnostics);
     }
 
     private List<FileMetric> parseAll(List<Path> sources, Path base, List<FileError> errors,
-                                      ScanAccumulator summaryAccumulator) {
+                                      ScanAccumulator summaryAccumulator, ScanRunContext run) {
         if (sources.isEmpty()) {
             return new ArrayList<>();
         }
         if (sources.size() == 1 || scanOptions.workers() == 1) {
-            return parseSequential(sources, base, errors, summaryAccumulator);
+            return parseSequential(sources, base, errors, summaryAccumulator, run);
         }
-        return parseParallel(sources, base, errors, summaryAccumulator);
+        return parseParallel(sources, base, errors, summaryAccumulator, run);
     }
 
     private List<FileMetric> parseSequential(List<Path> sources, Path base, List<FileError> errors,
-                                             ScanAccumulator summaryAccumulator) {
+                                             ScanAccumulator summaryAccumulator, ScanRunContext run) {
         List<FileMetric> files = new ArrayList<>();
         int processed = 0;
         for (Path source : sources) {
-            parseOne(source, base, files, errors, summaryAccumulator);
+            parseOne(source, base, files, errors, summaryAccumulator, run);
             logProgress(++processed, sources.size());
         }
         return files;
     }
 
     private List<FileMetric> parseParallel(List<Path> sources, Path base, List<FileError> errors,
-                                           ScanAccumulator summaryAccumulator) {
+                                           ScanAccumulator summaryAccumulator, ScanRunContext run) {
         List<FileMetric> files = Collections.synchronizedList(new ArrayList<>());
         AtomicInteger processed = new AtomicInteger();
 
@@ -150,7 +165,7 @@ public final class ProjectAnalyzer {
             List<Callable<Void>> tasks = new ArrayList<>();
             for (Path source : sources) {
                 tasks.add(() -> {
-                    parseOne(source, base, files, errors, summaryAccumulator);
+                    parseOne(source, base, files, errors, summaryAccumulator, run);
                     logProgress(processed.incrementAndGet(), sources.size());
                     return null;
                 });
@@ -173,8 +188,9 @@ public final class ProjectAnalyzer {
     }
 
     private void parseOne(Path source, Path base, List<FileMetric> files, List<FileError> errors,
-                          ScanAccumulator summaryAccumulator) {
+                          ScanAccumulator summaryAccumulator, ScanRunContext run) {
         String relative = relativePath(base, source);
+        run.parsingFile(relative);
         try {
             SourceParser.Outcome outcome = SourceParser.parse(source, sourceCharset(), languageLevel);
             ParseResult<CompilationUnit> result = outcome.result();
@@ -186,19 +202,26 @@ public final class ProjectAnalyzer {
                     detail = detail + " (tried language levels: "
                             + outcome.attempted().stream().map(Enum::name).collect(Collectors.joining(", ")) + ")";
                 }
-                errors.add(new FileError(relative, "Parse error: " + detail));
+                errors.add(fileError(relative, "Parse error: " + detail));
             }
         } catch (IOException e) {
-            errors.add(new FileError(relative, "I/O error: " + e.getMessage()));
+            errors.add(fileError(relative, "I/O error: " + e.getMessage()));
         } catch (ParseProblemException e) {
-            errors.add(new FileError(relative, "Parse error: " + e.getMessage()));
+            errors.add(fileError(relative, "Parse error: " + e.getMessage()));
         } catch (StackOverflowError e) {
-            errors.add(new FileError(relative, "Analysis aborted: expression nesting too deep (stack overflow)"));
+            errors.add(fileError(relative, "Analysis aborted: expression nesting too deep (stack overflow)"));
         } catch (OutOfMemoryError e) {
-            errors.add(new FileError(relative, "Analysis aborted: out of memory while analyzing file"));
+            errors.add(fileError(relative, "Analysis aborted: out of memory while analyzing file"));
         } catch (RuntimeException e) {
-            errors.add(new FileError(relative, "Unexpected error: " + e));
+            errors.add(fileError(relative, "Unexpected error: " + e));
+        } finally {
+            run.clearParsingFile();
+            run.fileFinished();
         }
+    }
+
+    private static FileError fileError(String relative, String message) {
+        return new FileError(relative, message, ScanErrorClassifier.classify(message));
     }
 
     private void logProgress(int processed, int total) {
@@ -362,16 +385,18 @@ public final class ProjectAnalyzer {
 
     // ------------------------------------------------------------------ report-level aggregation
 
-    private Summary buildSummary(int scanned, List<FileMetric> files, List<FileError> errors) {
+    private Summary buildSummary(int scanned, List<FileMetric> files, List<FileError> errors,
+                                 ModuleRootIndex moduleRoots) {
         ProjectSummaryStats stats = new ProjectSummaryStats();
         int classCount = 0;
         int totalLoc = 0;
         for (FileMetric file : files) {
             totalLoc += file.codeLines();
             classCount += file.classCount();
+            String moduleRoot = moduleRoots.moduleRoot(file.path());
             for (ClassMetric type : file.classes()) {
                 for (MethodMetric method : type.methods()) {
-                    stats.addMethod(method);
+                    stats.addMethod(moduleRoot, method);
                 }
             }
         }

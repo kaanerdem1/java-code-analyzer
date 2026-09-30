@@ -30,6 +30,7 @@ final class AnalysisReportJsonWriter {
         w.name("parserLanguageLevel").value(report.parserLanguageLevel());
         writeRiskModel(w, report.riskModel());
         writeSummary(w, report.summary());
+        writeScanDiagnostics(w, report.scanDiagnostics());
         writeHotspots(w, report.topRiskyMethods());
         writeFiles(w, report.files());
         writeErrors(w, report.errors());
@@ -85,6 +86,52 @@ final class AnalysisReportJsonWriter {
             w.name(level.name()).value(s.methodRiskDistribution().get(level));
         }
         w.endObject();
+        w.name("moduleSummaries");
+        w.beginArray();
+        for (AnalysisReport.ModuleRiskSummary module : s.moduleSummaries()) {
+            w.beginObject();
+            w.name("moduleRoot").value(module.moduleRoot());
+            w.name("methodCount").value(module.methodCount());
+            w.name("codeLines").value(module.codeLines());
+            w.name("locWeightedRiskScore").value(module.locWeightedRiskScore());
+            w.name("methodRiskScoreP95").value(module.methodRiskScoreP95());
+            w.name("criticalMethodsPerKloc").value(module.criticalMethodsPerKloc());
+            w.endObject();
+        }
+        w.endArray();
+        w.endObject();
+    }
+
+    private static void writeScanDiagnostics(JsonWriter w, ScanDiagnostics d) throws IOException {
+        if (d == null) {
+            return;
+        }
+        w.name("scanDiagnostics");
+        w.beginObject();
+        w.name("completionStatus").value(d.completionStatus());
+        w.name("lastPhaseTr").value(d.lastPhaseTr());
+        if (d.fatalPhaseTr() != null) {
+            w.name("fatalPhaseTr").value(d.fatalPhaseTr());
+        }
+        if (d.fatalMessage() != null) {
+            w.name("fatalMessage").value(d.fatalMessage());
+        }
+        if (d.lastFileAttempted() != null) {
+            w.name("lastFileAttempted").value(d.lastFileAttempted());
+        }
+        w.name("parseFailureRatio").value(d.parseFailureRatio());
+        w.name("errorsByCategory");
+        w.beginObject();
+        for (Map.Entry<String, Integer> e : d.errorsByCategory().entrySet()) {
+            w.name(e.getKey()).value(e.getValue());
+        }
+        w.endObject();
+        w.name("recommendationsTr");
+        w.beginArray();
+        for (String tip : d.recommendationsTr()) {
+            w.value(tip);
+        }
+        w.endArray();
         w.endObject();
     }
 
@@ -184,6 +231,8 @@ final class AnalysisReportJsonWriter {
         w.name("emptyCatchBlocks").value(m.emptyCatchBlocks());
         w.name("catchExceptionOrThrowable").value(m.catchExceptionOrThrowable());
         w.name("catchWithOnlyPrintStackTrace").value(m.catchWithOnlyPrintStackTrace());
+        w.name("primitiveObsessionIndex").value(m.primitiveObsessionIndex());
+        w.name("maxBooleanOperatorsInCondition").value(m.maxBooleanOperatorsInCondition());
         w.name("maxNestingDepth").value(m.maxNestingDepth());
         w.name("parameterCount").value(m.parameterCount());
         w.name("godMethod").value(m.godMethod());
@@ -228,6 +277,7 @@ final class AnalysisReportJsonWriter {
             w.beginObject();
             w.name("file").value(e.file());
             w.name("message").value(e.message());
+            w.name("category").value(e.category().name());
             w.endObject();
         }
         w.endArray();

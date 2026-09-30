@@ -80,12 +80,13 @@ final class AnalysisConsoleLogger {
             for (ClassMetric type : file.classes()) {
                 for (MethodMetric m : type.methods()) {
                     RiskBreakdown b = m.riskBreakdown();
-                    err.printf(Locale.US, TAG + " %s | %s.%s | score=%.3f %s | CC=%d cog=%d LOC=%d nest=%d exit=%d catch=%d sw=%d fout=%d lam=%d tryNest=%d locals=%d chain=%d params=%d%n",
+                    err.printf(Locale.US, TAG + " %s | %s.%s | score=%.3f %s | CC=%d cog=%d LOC=%d nest=%d exit=%d catch=%d sw=%d fout=%d lam=%d tryNest=%d locals=%d chain=%d params=%d primObs=%d boolOps=%d%n",
                             file.path(), type.name(), m.signature(), m.riskScore(), m.riskLevel(),
                             m.cyclomaticComplexity(), m.cognitiveComplexity(), m.codeLines(),
                             m.maxNestingDepth(), m.exitPoints(), m.catchClauses(), m.switchCases(),
                             m.outboundDistinctCalls(), m.lambdaCount(), m.maxTryNestingDepth(),
-                            m.localVariableCount(), m.maxMethodCallChainLength(), m.parameterCount());
+                            m.localVariableCount(), m.maxMethodCallChainLength(), m.parameterCount(),
+                            m.primitiveObsessionIndex(), m.maxBooleanOperatorsInCondition());
                     if (m.emptyCatchBlocks() > 0 || m.catchExceptionOrThrowable() > 0
                             || m.catchWithOnlyPrintStackTrace() > 0) {
                         err.printf(Locale.US, TAG + "     catch-quality: empty=%d broad=%d printStackTraceOnly=%d%n",
@@ -111,9 +112,49 @@ final class AnalysisConsoleLogger {
         }
         PrintStream err = System.err;
         err.println(TAG + " --- Parse / analysis errors ---");
+        int shown = 0;
+        int max = 25;
         for (AnalysisReport.FileError e : errors) {
-            err.println(TAG + " " + e.file() + ": " + e.message());
+            if (shown >= max) {
+                err.println(TAG + " ... " + (errors.size() - max) + " more (see report § Okunamayan dosyalar)");
+                break;
+            }
+            err.println(TAG + " " + e.file() + " [" + e.category().name() + "]: " + e.message());
+            shown++;
         }
+    }
+
+    static void logScanDiagnostics(ScanDiagnostics diagnostics) {
+        if (diagnostics == null) {
+            return;
+        }
+        PrintStream err = System.err;
+        err.println(TAG + " --- Tarama tanıları ---");
+        err.println(TAG + " Durum: " + diagnostics.completionStatus()
+                + " | son aşama: " + diagnostics.lastPhaseTr());
+        if (diagnostics.fatalMessage() != null) {
+            err.println(TAG + " FATAL aşama=" + diagnostics.fatalPhaseTr() + ": " + diagnostics.fatalMessage());
+        }
+        if (diagnostics.lastFileAttempted() != null && !diagnostics.lastFileAttempted().isBlank()) {
+            err.println(TAG + " Son işlenen dosya: " + diagnostics.lastFileAttempted());
+        }
+        err.printf(Locale.US, TAG + " Parse hata oranı: %.1f%%%n", diagnostics.parseFailureRatio() * 100);
+        if (!diagnostics.errorsByCategory().isEmpty()) {
+            err.println(TAG + " Hata kategorileri: " + diagnostics.errorsByCategory());
+        }
+        for (String tip : diagnostics.recommendationsTr()) {
+            err.println(TAG + " → " + tip);
+        }
+        err.println(TAG + " Ayrıntı: docs/scan-error-management.md");
+    }
+
+    static void logFatal(ScanPhase phase, String message, String lastFile) {
+        PrintStream err = System.err;
+        err.println(TAG + " FATAL aşama=" + phase.labelTr() + ": " + message);
+        if (lastFile != null && !lastFile.isBlank()) {
+            err.println(TAG + " Son dosya: " + lastFile);
+        }
+        err.println(TAG + " Rapor eksik olabilir; docs/scan-error-management.md");
     }
 
     private static String formatThresholds(AnalysisReport.RiskModel model) {

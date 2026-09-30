@@ -230,6 +230,8 @@ public final class RiskCalculator {
         fingerprint = mix(fingerprint, values.emptyCatchBlocks());
         fingerprint = mix(fingerprint, values.catchExceptionOrThrowable());
         fingerprint = mix(fingerprint, values.catchWithOnlyPrintStackTrace());
+        fingerprint = mix(fingerprint, values.primitiveObsessionIndex());
+        fingerprint = mix(fingerprint, values.maxBooleanOperatorsInCondition());
         double unit = (fingerprint % 50_000) / 1_000_000.0;
         return unit * RiskScoreScale.MAX;
     }

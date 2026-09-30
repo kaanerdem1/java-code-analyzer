@@ -56,6 +56,7 @@ public final class Java6CodeAnalyzerMain {
             return 0;
         }
 
+        ScanRunContext run = new ScanRunContext();
         try {
             if (!Files.exists(options.path()) || !Files.isReadable(options.path())) {
                 System.err.println("[ERROR] Path does not exist or is not readable: " + options.path());
@@ -71,8 +72,11 @@ public final class Java6CodeAnalyzerMain {
             AnalysisReport report = new ProjectAnalyzer(
                     options.charset(), options.top(), options.languageLevel(), options.scanOptions(),
                     riskCalculator)
-                    .analyze(options.path());
+                    .analyze(options.path(), run);
+
+            run.phase(ScanPhase.WRITE_JSON);
             writeJson(report, options);
+            run.phase(ScanPhase.WRITE_MARKDOWN);
             writeMarkdownIfRequested(report, options);
 
             String jsonPath = options.output() != null
@@ -89,12 +93,18 @@ public final class Java6CodeAnalyzerMain {
             System.err.println("[STANDALONE] Done: " + s.filesParsed() + " parsed, " + s.filesFailed() + " failed, "
                     + s.methodCount() + " methods, project risk " + s.projectRiskScore()
                     + " (" + s.projectRiskLevel() + ")");
-            return ScanExitEvaluator.evaluate(report, options.maxFailureRatio(), options.failOnRisk());
+
+            run.phase(ScanPhase.EXIT_EVAL);
+            int exitCode = ScanExitEvaluator.evaluate(report, options.maxFailureRatio(), options.failOnRisk());
+            AnalysisConsoleLogger.logScanDiagnostics(ScanDiagnostics.from(report, run, exitCode));
+            return exitCode;
         } catch (IOException e) {
-            System.err.println("[ERROR] I/O failure: " + e.getMessage());
+            run.markFatal(run.phase(), e.getMessage());
+            AnalysisConsoleLogger.logFatal(run.phase(), e.getMessage(), run.currentFile());
             return 1;
         } catch (RuntimeException e) {
-            System.err.println("[ERROR] Unexpected failure: " + e);
+            run.markFatal(run.phase(), e.getMessage());
+            AnalysisConsoleLogger.logFatal(run.phase(), e.getMessage(), run.currentFile());
             return 1;
         }
     }
