@@ -679,7 +679,7 @@ final class StandaloneReportMarkdown {
         for (String tip : d.recommendationsTr()) {
             out.write("- " + tip + "\n");
         }
-        out.write("\nAyrıntılı senaryolar: `docs/scan-error-management.md`\n\n");
+        out.write("\nAyrıntılı senaryolar: `scan-error-management.md`\n\n");
     }
 
     private static String fmtPercent(double ratio) {

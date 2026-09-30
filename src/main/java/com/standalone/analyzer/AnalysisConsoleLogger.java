@@ -145,7 +145,7 @@ final class AnalysisConsoleLogger {
         for (String tip : diagnostics.recommendationsTr()) {
             err.println(TAG + " → " + tip);
         }
-        err.println(TAG + " Ayrıntı: docs/scan-error-management.md");
+        err.println(TAG + " Ayrıntı: scan-error-management.md");
     }
 
     static void logFatal(ScanPhase phase, String message, String lastFile) {
@@ -154,7 +154,7 @@ final class AnalysisConsoleLogger {
         if (lastFile != null && !lastFile.isBlank()) {
             err.println(TAG + " Son dosya: " + lastFile);
         }
-        err.println(TAG + " Rapor eksik olabilir; docs/scan-error-management.md");
+        err.println(TAG + " Rapor eksik olabilir; scan-error-management.md");
     }
 
     private static String formatThresholds(AnalysisReport.RiskModel model) {

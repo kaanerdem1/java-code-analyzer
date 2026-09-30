@@ -76,7 +76,7 @@ record ScanDiagnostics(
         int syntax = byCat.getOrDefault(ScanErrorCategory.PARSE_SYNTAX.name(), 0);
         int lang = byCat.getOrDefault(ScanErrorCategory.PARSE_LANGUAGE_LEVEL.name(), 0);
         if (syntax + lang > 0) {
-            tips.add("Parse hataları için `docs/scan-error-management.md` (unexpected token senaryoları).");
+            tips.add("Parse hataları için `scan-error-management.md` (unexpected token senaryoları).");
         }
         if (lang > 0) {
             tips.add("Karışık Java sürümleri: dosya başına dil fallback var; yine de "

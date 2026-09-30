@@ -2,6 +2,8 @@
 
 Kaynak kodda **metod karmaşıklığı ve risk** (CC, LOC, nesting, hotspot, Türkçe Markdown/JSON). **Call-graph / servis→metod çağrı zinciri bu repoda yok** — etki analizi ve lineage ayrı uygulamada.
 
+Terminal / parse hataları: [scan-error-management.md](scan-error-management.md).
+
 ### JAR (`target/` — repoda yok)
 
 Analyzer kökünde **bir kez** `mvn package` → `target/java-code-analyzer.jar`. Script JAR yoksa analyzer repodaysa otomatik derler. **JDK 17+** gerekir.
