@@ -12,12 +12,13 @@ final class ScanOptionsParser {
 
     static ScanOptions parse(List<String> includeGlobs, List<String> excludeGlobs, int workers,
                              int progressEvery, ReportDetail reportDetail,
-                             boolean applyDefaultIgnoredDirectories) {
+                             boolean applyDefaultIgnoredDirectories,
+                             java.nio.file.Path incrementalStateFile, boolean ignoreIncrementalCache) {
         ScanOptions defaults = ScanOptions.defaults();
         int resolvedWorkers = workers > 0 ? workers : defaults.workers();
         int resolvedProgress = progressEvery > 0 ? progressEvery : defaults.progressEvery();
         return new ScanOptions(resolvedWorkers, resolvedProgress, includeGlobs, excludeGlobs, reportDetail,
-                applyDefaultIgnoredDirectories);
+                applyDefaultIgnoredDirectories, incrementalStateFile, ignoreIncrementalCache);
     }
 
     static ReportDetail parseDetail(String raw) {

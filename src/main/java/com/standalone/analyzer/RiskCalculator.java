@@ -147,17 +147,24 @@ public final class RiskCalculator {
     /** Class-level aggregate (includes optional class dimensions from profile). */
     public Assessment assessClassAggregate(
             List<MethodMetric> methods, int codeLines, int wmc, int publicMethodCount, int efferentCoupling) {
-        return assessAggregateInternal(methods, codeLines, wmc, publicMethodCount, efferentCoupling, Scope.CLASS);
+        return assessClassAggregate(methods, RiskProfile.ClassScanValues.structuralOnly(
+                codeLines, wmc, publicMethodCount, efferentCoupling));
+    }
+
+    public Assessment assessClassAggregate(List<MethodMetric> methods, RiskProfile.ClassScanValues classValues) {
+        return assessAggregateInternal(methods, classValues, Scope.CLASS);
     }
 
     /** File-level aggregate (no class coupling dimensions). */
     public Assessment assessAggregate(List<MethodMetric> methods, int codeLines, int wmc, Scope scope) {
-        return assessAggregateInternal(methods, codeLines, wmc, 0, 0, scope);
+        return assessAggregateInternal(methods,
+                RiskProfile.ClassScanValues.structuralOnly(codeLines, wmc, 0, 0), scope);
     }
 
     private Assessment assessAggregateInternal(
-            List<MethodMetric> methods, int codeLines, int wmc, int publicMethodCount, int efferentCoupling,
-            Scope scope) {
+            List<MethodMetric> methods, RiskProfile.ClassScanValues classValues, Scope scope) {
+        int codeLines = classValues.codeLines();
+        int wmc = classValues.wmc();
         double sSize = subScore(codeLines, scope.locMedium, scope.locHigh, scope.locCritical);
         double sWmc = subScore(wmc, scope.wmcMedium, scope.wmcHigh, scope.wmcCritical);
         double worstMethod = methods.stream().mapToDouble(MethodMetric::riskScore).max().orElse(0.0);
@@ -165,8 +172,6 @@ public final class RiskCalculator {
 
         double dominant = Math.max(Math.max(sSize, sWmc), WORST_METHOD_INFLUENCE * worstMethod);
         double classBlend = 0.0;
-        RiskProfile.ClassScanValues classValues =
-                new RiskProfile.ClassScanValues(codeLines, wmc, publicMethodCount, efferentCoupling);
 
         if (scope == Scope.CLASS) {
             for (RiskProfile.ScoredDimension<RiskProfile.ClassScanValues> dimension : profile.classDimensions()) {
@@ -232,6 +237,13 @@ public final class RiskCalculator {
         fingerprint = mix(fingerprint, values.catchWithOnlyPrintStackTrace());
         fingerprint = mix(fingerprint, values.primitiveObsessionIndex());
         fingerprint = mix(fingerprint, values.maxBooleanOperatorsInCondition());
+        fingerprint = mix(fingerprint, values.halsteadDifficultyRounded());
+        fingerprint = mix(fingerprint, values.halsteadEffortRounded());
+        fingerprint = mix(fingerprint, values.rawTypeUsage());
+        fingerprint = mix(fingerprint, values.stringConcatInLoop());
+        fingerprint = mix(fingerprint, values.hardcodedLiteralCount());
+        fingerprint = mix(fingerprint, values.swallowedExceptionSmells());
+        fingerprint = mix(fingerprint, values.genericExceptionSmells());
         double unit = (fingerprint % 50_000) / 1_000_000.0;
         return unit * RiskScoreScale.MAX;
     }

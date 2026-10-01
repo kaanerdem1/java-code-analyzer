@@ -21,7 +21,8 @@ class ReportOutputTest {
     void jsonStreamOmitsHierarchyFields() throws Exception {
         Path root = Path.of("mock-modules").toAbsolutePath().normalize();
         var analyzer = new ProjectAnalyzer(StandardCharsets.UTF_8, 5, ParserConfiguration.LanguageLevel.JAVA_17,
-                new ScanOptions(1, 500, java.util.List.of(), java.util.List.of(), ScanOptions.ReportDetail.FULL, true));
+                new ScanOptions(1, 500, java.util.List.of(), java.util.List.of(), ScanOptions.ReportDetail.FULL, true,
+                        null, false));
         AnalysisReport report = analyzer.analyze(root);
 
         StringWriter jsonOut = new StringWriter();
@@ -33,11 +34,12 @@ class ReportOutputTest {
     }
 
     @Test
-    void markdownFromJsonSkipsLowRiskMethods() throws Exception {
+    void markdownFromJsonIncludesAllRiskLevels() throws Exception {
         Path root = Path.of("mock-modules").toAbsolutePath().normalize();
         Path jsonFile = temp.resolve("report.json");
         var analyzer = new ProjectAnalyzer(StandardCharsets.UTF_8, 5, ParserConfiguration.LanguageLevel.JAVA_17,
-                new ScanOptions(1, 500, java.util.List.of(), java.util.List.of(), ScanOptions.ReportDetail.FULL, true));
+                new ScanOptions(1, 500, java.util.List.of(), java.util.List.of(), ScanOptions.ReportDetail.FULL, true,
+                        null, false));
         AnalysisReport report = analyzer.analyze(root);
         try (var w = Files.newBufferedWriter(jsonFile, StandardCharsets.UTF_8)) {
             AnalysisReportJsonWriter.write(report, w, false);
@@ -48,7 +50,8 @@ class ReportOutputTest {
             StandaloneReportMarkdown.renderFromJson(r, md);
         }
         String markdown = md.toString();
-        assertTrue(markdown.contains("ORTA ve üzeri risk"));
-        assertFalse(markdown.contains("Tüm metodlar"));
+        assertTrue(markdown.contains("Metodlar (risk skoruna göre)"));
+        assertTrue(markdown.contains("| DÜŞÜK |"));
+        assertFalse(markdown.contains("En riskli metodlar"));
     }
 }

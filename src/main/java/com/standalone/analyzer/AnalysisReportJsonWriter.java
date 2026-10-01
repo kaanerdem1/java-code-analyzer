@@ -31,6 +31,8 @@ final class AnalysisReportJsonWriter {
         writeRiskModel(w, report.riskModel());
         writeSummary(w, report.summary());
         writeScanDiagnostics(w, report.scanDiagnostics());
+        writeCacheStatistics(w, report.cacheStatistics());
+        writeIncrementalChanges(w, report.incrementalChanges());
         writeHotspots(w, report.topRiskyMethods());
         writeFiles(w, report.files());
         writeErrors(w, report.errors());
@@ -194,6 +196,10 @@ final class AnalysisReportJsonWriter {
                 w.name("riskScore").value(type.riskScore());
                 w.name("riskLevel").value(type.riskLevel().name());
                 writeStringList(w, "riskFactors", type.riskFactors());
+                writeHalstead(w, "halstead", type.halstead());
+                w.name("lcom3").value(type.lcom3());
+                w.name("godClassCandidate").value(type.godClassCandidate());
+                writeStringList(w, "dependentTypes", type.dependentTypes());
                 w.name("methods");
                 w.beginArray();
                 for (MethodMetric m : type.methods()) {
@@ -240,6 +246,30 @@ final class AnalysisReportJsonWriter {
         w.name("riskLevel").value(m.riskLevel().name());
         writeStringList(w, "riskFactors", m.riskFactors());
         writeBreakdown(w, m.riskBreakdown());
+        writeHalstead(w, "halstead", m.halstead());
+        writeExceptionSmells(w, m.exceptionSmells());
+        writeCodeSmells(w, m.codeSmells());
+        w.name("methodHash").value(m.methodHash());
+        w.name("analysisReused").value(m.analysisReused());
+        w.endObject();
+    }
+
+    private static void writeCacheStatistics(JsonWriter w, AnalysisReport.CacheStatistics cache) throws IOException {
+        if (cache == null) {
+            return;
+        }
+        w.name("cacheStatistics");
+        w.beginObject();
+        w.name("totalFiles").value(cache.totalFiles());
+        w.name("filesSkippedViaFileHash").value(cache.filesSkippedViaFileHash());
+        w.name("filesReanalyzed").value(cache.filesReanalyzed());
+        w.name("filesSemanticCosmeticOnly").value(cache.filesSemanticCosmeticOnly());
+        w.name("filesSkippedViaModuleBulk").value(cache.filesSkippedViaModuleBulk());
+        w.name("modulesUnchanged").value(cache.modulesUnchanged());
+        w.name("totalMethods").value(cache.totalMethods());
+        w.name("methodsSkippedViaHash").value(cache.methodsSkippedViaHash());
+        w.name("methodsReanalyzed").value(cache.methodsReanalyzed());
+        w.name("scanTimeMillis").value(cache.scanTimeMillis());
         w.endObject();
     }
 
@@ -288,6 +318,78 @@ final class AnalysisReportJsonWriter {
         w.beginArray();
         for (String v : values) {
             w.value(v);
+        }
+        w.endArray();
+    }
+
+    private static void writeIncrementalChanges(JsonWriter w, IncrementalChanges changes) throws IOException {
+        w.name("incrementalChanges");
+        w.beginObject();
+        w.name("comparedToPreviousScan").value(changes.comparedToPreviousScan());
+        w.name("filesAdded").value(changes.filesAdded());
+        w.name("filesRemoved").value(changes.filesRemoved());
+        w.name("filesModified").value(changes.filesModified());
+        w.name("filesCosmeticOnly").value(changes.filesCosmeticOnly());
+        w.name("filesUnchanged").value(changes.filesUnchanged());
+        w.name("methodsAdded").value(changes.methodsAdded());
+        w.name("methodsRemoved").value(changes.methodsRemoved());
+        w.name("methodsModified").value(changes.methodsModified());
+        w.name("fileChanges");
+        w.beginArray();
+        for (IncrementalChanges.FilePathChange fc : changes.fileChanges()) {
+            w.beginObject();
+            w.name("path").value(fc.path());
+            w.name("kind").value(fc.kind().name());
+            w.endObject();
+        }
+        w.endArray();
+        w.name("methodChanges");
+        w.beginArray();
+        for (IncrementalChanges.MethodPathChange mc : changes.methodChanges()) {
+            w.beginObject();
+            w.name("file").value(mc.file());
+            w.name("className").value(mc.className());
+            w.name("methodSignature").value(mc.methodSignature());
+            w.name("startLine").value(mc.startLine());
+            w.name("endLine").value(mc.endLine());
+            w.name("kind").value(mc.kind().name());
+            w.endObject();
+        }
+        w.endArray();
+        w.endObject();
+    }
+
+    private static void writeHalstead(JsonWriter w, String name, HalsteadMetrics h) throws IOException {
+        w.name(name);
+        w.beginObject();
+        w.name("difficulty").value(h.difficulty());
+        w.name("effort").value(h.effort());
+        w.name("volume").value(h.volume());
+        w.endObject();
+    }
+
+    private static void writeExceptionSmells(JsonWriter w, List<ExceptionSmell> smells) throws IOException {
+        w.name("exceptionSmells");
+        w.beginArray();
+        for (ExceptionSmell s : smells) {
+            w.beginObject();
+            w.name("type").value(s.type().name());
+            w.name("exceptionType").value(s.exceptionType());
+            w.name("line").value(s.line());
+            w.endObject();
+        }
+        w.endArray();
+    }
+
+    private static void writeCodeSmells(JsonWriter w, List<CodeSmell> smells) throws IOException {
+        w.name("codeSmells");
+        w.beginArray();
+        for (CodeSmell s : smells) {
+            w.beginObject();
+            w.name("type").value(s.type().name());
+            w.name("detail").value(s.detail());
+            w.name("line").value(s.line());
+            w.endObject();
         }
         w.endArray();
     }

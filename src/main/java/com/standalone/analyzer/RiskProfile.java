@@ -50,7 +50,26 @@ public record RiskProfile(
         }
     }
 
-    public record ClassScanValues(int codeLines, int wmc, int publicMethodCount, int efferentCouplingProxy) {
+    public record ClassScanValues(
+            int codeLines,
+            int wmc,
+            int publicMethodCount,
+            int efferentCouplingProxy,
+            int efferentTypeCount,
+            int lcom3Times100,
+            int halsteadEffortRounded,
+            int swallowedExceptionSmells,
+            int genericExceptionSmells,
+            int rawTypeUsage,
+            int stringConcatInLoop,
+            int hardcodedLiteralCount,
+            int godClassIndicator) {
+
+        public static ClassScanValues structuralOnly(int codeLines, int wmc, int publicMethodCount,
+                                                     int efferentCouplingProxy) {
+            return new ClassScanValues(codeLines, wmc, publicMethodCount, efferentCouplingProxy,
+                    0, 0, 0, 0, 0, 0, 0, 0, 0);
+        }
     }
 
     public Optional<ThresholdTriple> threshold(String dimensionId) {

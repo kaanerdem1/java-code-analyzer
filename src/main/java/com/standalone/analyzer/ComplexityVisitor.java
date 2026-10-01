@@ -49,6 +49,7 @@ import java.util.Deque;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -70,6 +71,8 @@ public class ComplexityVisitor extends VoidVisitorAdapter<Void> {
 
     private final RiskCalculator riskCalculator;
     private final BitSet codeLines;
+    private final Map<String, MethodMetric> previousMethods;
+    private final Map<String, SupplementalMetrics.LegacyMethodMetrics> legacyByMethodKey;
     private final Deque<TypeContext> typeStack = new ArrayDeque<>();
     private final Deque<MethodContext> methodStack = new ArrayDeque<>();
     private final List<ClassMetric> completedTypes = new ArrayList<>();
@@ -77,8 +80,21 @@ public class ComplexityVisitor extends VoidVisitorAdapter<Void> {
     private ImportTypeIndex importIndex;
 
     public ComplexityVisitor(RiskCalculator riskCalculator, BitSet codeLines) {
+        this(riskCalculator, codeLines, Map.of());
+    }
+
+    public ComplexityVisitor(RiskCalculator riskCalculator, BitSet codeLines,
+                             Map<String, MethodMetric> previousMethods) {
+        this(riskCalculator, codeLines, previousMethods, Map.of());
+    }
+
+    public ComplexityVisitor(RiskCalculator riskCalculator, BitSet codeLines,
+                             Map<String, MethodMetric> previousMethods,
+                             Map<String, SupplementalMetrics.LegacyMethodMetrics> legacyByMethodKey) {
         this.riskCalculator = riskCalculator;
         this.codeLines = codeLines;
+        this.previousMethods = previousMethods == null ? Map.of() : previousMethods;
+        this.legacyByMethodKey = legacyByMethodKey == null ? Map.of() : legacyByMethodKey;
     }
 
     /** Marks every line that carries at least one non-whitespace, non-comment token. */
@@ -177,7 +193,8 @@ public class ComplexityVisitor extends VoidVisitorAdapter<Void> {
                 methods, loc, wmc, context.publicMethodCount, context.efferentCouplingProxy);
         return new ClassMetric(context.name, context.kind, start, end, methods.size(),
                 context.publicMethodCount, loc, context.efferentCouplingProxy, wmc, maxCc,
-                avgCc, risk.score(), risk.level(), risk.factors(), List.copyOf(methods));
+                avgCc, risk.score(), risk.level(), risk.factors(), List.copyOf(methods),
+                HalsteadMetrics.EMPTY, List.of(), 0.0, false, 0, 0, 0, 0, 0);
     }
 
     private ClassMetric buildClassMetric(TypeContext context, TypeDeclaration<?> declaration) {
@@ -196,7 +213,8 @@ public class ComplexityVisitor extends VoidVisitorAdapter<Void> {
                 methods, loc, wmc, context.publicMethodCount, ce);
         return new ClassMetric(context.name, context.kind, start, end, methods.size(),
                 context.publicMethodCount, loc, ce, wmc, maxCc,
-                avgCc, risk.score(), risk.level(), risk.factors(), List.copyOf(methods));
+                avgCc, risk.score(), risk.level(), risk.factors(), List.copyOf(methods),
+                HalsteadMetrics.EMPTY, List.of(), 0.0, false, 0, 0, 0, 0, 0);
     }
 
     // ------------------------------------------------------------------ methods
@@ -394,16 +412,34 @@ public class ComplexityVisitor extends VoidVisitorAdapter<Void> {
         int statements = body != null ? countStatements(body) : 0;
         int primitiveObsession = MethodQualityMetrics.primitiveObsessionIndex(declaration, root);
         int maxBooleanOps = MethodQualityMetrics.maxBooleanOperatorsInCondition(root);
-        MethodScanValues scan = new MethodScanValues(
+        MethodScanValues baseScan = new MethodScanValues(
                 context.cyclomatic, loc, context.maxDepth, parameterCount, cognitive, statements,
                 context.exitPoints, context.catchClauses, context.switchCases,
                 context.outboundCallKeys.size(), context.lambdaCount, context.maxTryDepth,
                 context.localVariableCount, context.maxMethodCallChainLength,
                 context.emptyCatchBlocks, context.catchExceptionOrThrowable,
-                context.catchWithOnlyPrintStackTrace, primitiveObsession, maxBooleanOps);
-        Assessment risk = riskCalculator.assessMethod(scan);
-        boolean god = riskCalculator.isGodMethod(scan);
-        return new MethodMetric(
+                context.catchWithOnlyPrintStackTrace, primitiveObsession, maxBooleanOps,
+                0, 0, 0, 0, 0, 0, 0);
+        String cacheKey = owner.name + "#" + signature;
+        SupplementalMetrics.LegacyMethodMetrics legacy = resolveLegacy(owner.name, signature);
+        MethodScanValues scan = MethodScanValues.withLegacyExtensions(baseScan, legacy.halstead(),
+                legacy.exceptionSmells(), legacy.codeSmells());
+        MethodMetric previous = previousMethods.get(cacheKey);
+        String methodHash = declaration != null ? HashService.normalizedMethodHash(declaration) : "";
+        boolean reuse = previous != null && !methodHash.isEmpty() && methodHash.equals(previous.methodHash());
+
+        Assessment risk;
+        boolean god;
+        if (reuse) {
+            risk = new Assessment(previous.riskScore(), previous.riskLevel(), previous.riskFactors(),
+                    previous.riskBreakdown());
+            god = previous.godMethod();
+        } else {
+            risk = riskCalculator.assessMethod(scan);
+            god = riskCalculator.isGodMethod(scan);
+        }
+
+        return MethodMetric.withoutLegacyExtensions(
                 name, kind, signature, start, endLine,
                 context.cyclomatic, Math.max(0, endLine - start + 1), loc, statements,
                 cognitive, context.exitPoints, context.catchClauses, context.switchCases,
@@ -413,6 +449,25 @@ public class ComplexityVisitor extends VoidVisitorAdapter<Void> {
                 context.catchWithOnlyPrintStackTrace, primitiveObsession, maxBooleanOps,
                 context.maxDepth, parameterCount, god, risk.score(), risk.level(), risk.factors(),
                 risk.breakdown());
+    }
+
+    private SupplementalMetrics.LegacyMethodMetrics resolveLegacy(String typeName, String signature) {
+        String key = typeName + "#" + signature;
+        SupplementalMetrics.LegacyMethodMetrics hit = legacyByMethodKey.get(key);
+        if (hit != null) {
+            return hit;
+        }
+        String suffix = "#" + signature;
+        for (Map.Entry<String, SupplementalMetrics.LegacyMethodMetrics> entry : legacyByMethodKey.entrySet()) {
+            if (!entry.getKey().endsWith(suffix)) {
+                continue;
+            }
+            String cls = entry.getKey().substring(0, entry.getKey().length() - suffix.length());
+            if (cls.equals(typeName) || cls.endsWith("." + typeName) || typeName.endsWith("." + cls)) {
+                return entry.getValue();
+            }
+        }
+        return SupplementalMetrics.LegacyMethodMetrics.empty();
     }
 
     // ------------------------------------------------------------------ decision points

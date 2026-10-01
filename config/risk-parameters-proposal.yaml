@@ -88,7 +88,7 @@ dimension_template:
 # ---------------------------------------------------------------------------
 profiles:
   enterprise-java:
-    model_version: v2
+    model_version: v3
     score_mix:
       dominant_weight: 0.58
       blend_weight: 0.42
@@ -149,11 +149,33 @@ profiles:
         thresholds: { dikkat: 0, yuksek: 1, kritik: 1 }
         when_tr:
           - "Tek if/while koşulundaki && ve || sayısı (Checkstyle BooleanExpressionComplexity benzeri)"
+      halsteadDifficulty:
+        thresholds: { dikkat: 10, yuksek: 20, kritik: 40 }
+      halsteadEffort:
+        thresholds: { dikkat: 3000, yuksek: 10000, kritik: 50000 }
+      rawTypeUsage:
+        thresholds: { dikkat: 1, yuksek: 3, kritik: 8 }
+      stringConcatInLoop:
+        thresholds: { dikkat: 1, yuksek: 3, kritik: 6 }
+      hardcodedLiteralCount:
+        thresholds: { dikkat: 1, yuksek: 2, kritik: 5 }
+      swallowedExceptionSmells:
+        thresholds: { dikkat: 1, yuksek: 2, kritik: 4 }
+      genericExceptionSmells:
+        thresholds: { dikkat: 1, yuksek: 3, kritik: 6 }
     class_dimensions:
       publicMethodCount:
         thresholds: { dikkat: 1, yuksek: 6, kritik: 6 }
       efferentCouplingProxy:
         thresholds: { dikkat: 1, yuksek: 7, kritik: 12 }
+      efferentTypeCount:
+        thresholds: { dikkat: 8, yuksek: 15, kritik: 30 }
+      lcom3Index:
+        thresholds: { dikkat: 100, yuksek: 150, kritik: 200 }
+      halsteadEffortClass:
+        thresholds: { dikkat: 20000, yuksek: 80000, kritik: 300000 }
+      godClassIndicator:
+        thresholds: { dikkat: 0, yuksek: 0, kritik: 1 }
     blend_weights:
       branching: 0.17
       nesting: 0.14
@@ -173,9 +195,20 @@ profiles:
       catchWithOnlyPrintStackTrace: 0.02
       primitiveObsessionIndex: 0.04
       maxBooleanOperatorsInCondition: 0.04
+      halsteadDifficulty: 0.04
+      halsteadEffort: 0.04
+      rawTypeUsage: 0.03
+      stringConcatInLoop: 0.03
+      hardcodedLiteralCount: 0.03
+      swallowedExceptionSmells: 0.03
+      genericExceptionSmells: 0.02
     class_blend_weights:
-      publicMethodCount: 0.5
-      efferentCouplingProxy: 0.5
+      publicMethodCount: 0.25
+      efferentCouplingProxy: 0.25
+      efferentTypeCount: 0.15
+      lcom3Index: 0.15
+      halsteadEffortClass: 0.10
+      godClassIndicator: 0.10
     god_method:
       label_tr: "Dev metod uyarısı (skordan bağımsız bayrak)"
       rules_tr:

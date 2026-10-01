@@ -58,6 +58,13 @@ final class RiskBreakdownUtil {
             case "catchWithOnlyPrintStackTrace" -> "printStackTrace catch";
             case "primitiveObsessionIndex" -> "primitive obsession";
             case "maxBooleanOperatorsInCondition" -> "complex conditional";
+            case "halsteadDifficulty" -> "Halstead zorluk";
+            case "halsteadEffort" -> "Halstead effort";
+            case "rawTypeUsage" -> "raw tip";
+            case "stringConcatInLoop" -> "döngüde concat";
+            case "hardcodedLiteralCount" -> "gömülü sabit";
+            case "swallowedExceptionSmells" -> "yutulan exception";
+            case "genericExceptionSmells" -> "generic catch";
             default -> driverId;
         };
     }

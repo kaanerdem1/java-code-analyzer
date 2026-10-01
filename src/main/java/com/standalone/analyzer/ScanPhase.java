@@ -23,4 +23,18 @@ enum ScanPhase {
             case COMPLETE -> "tamamlandı";
         };
     }
+
+    /** stderr / Windows CMD (ASCII-safe). */
+    String labelEn() {
+        return switch (this) {
+            case START -> "start";
+            case DISCOVERY -> "file discovery";
+            case PARSING -> "parse and metrics";
+            case REPORT_ASSEMBLY -> "report assembly";
+            case WRITE_JSON -> "JSON write";
+            case WRITE_MARKDOWN -> "Markdown write";
+            case EXIT_EVAL -> "exit code evaluation";
+            case COMPLETE -> "complete";
+        };
+    }
 }

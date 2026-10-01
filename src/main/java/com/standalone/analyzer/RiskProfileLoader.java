@@ -255,11 +255,33 @@ public final class RiskProfileLoader {
                     new MethodDimensionSpec("Primitive obsession index", MethodScanValues::primitiveObsessionIndex)),
             Map.entry("maxBooleanOperatorsInCondition",
                     new MethodDimensionSpec("Complex conditional (bool ops peak)",
-                            MethodScanValues::maxBooleanOperatorsInCondition)));
+                            MethodScanValues::maxBooleanOperatorsInCondition)),
+            Map.entry("halsteadDifficulty",
+                    new MethodDimensionSpec("Halstead difficulty", MethodScanValues::halsteadDifficultyRounded)),
+            Map.entry("halsteadEffort",
+                    new MethodDimensionSpec("Halstead effort", MethodScanValues::halsteadEffortRounded)),
+            Map.entry("rawTypeUsage",
+                    new MethodDimensionSpec("Raw type usage", MethodScanValues::rawTypeUsage)),
+            Map.entry("stringConcatInLoop",
+                    new MethodDimensionSpec("String concat in loop", MethodScanValues::stringConcatInLoop)),
+            Map.entry("hardcodedLiteralCount",
+                    new MethodDimensionSpec("Hardcoded literal", MethodScanValues::hardcodedLiteralCount)),
+            Map.entry("swallowedExceptionSmells",
+                    new MethodDimensionSpec("Swallowed exception", MethodScanValues::swallowedExceptionSmells)),
+            Map.entry("genericExceptionSmells",
+                    new MethodDimensionSpec("Generic exception catch", MethodScanValues::genericExceptionSmells)));
 
-    private static final Map<String, ClassDimensionSpec> CLASS_SPECS = Map.of(
-            "publicMethodCount",
-            new ClassDimensionSpec("Public method count", RiskProfile.ClassScanValues::publicMethodCount),
-            "efferentCouplingProxy",
-            new ClassDimensionSpec("Efferent coupling (proxy)", RiskProfile.ClassScanValues::efferentCouplingProxy));
+    private static final Map<String, ClassDimensionSpec> CLASS_SPECS = Map.ofEntries(
+            Map.entry("publicMethodCount",
+                    new ClassDimensionSpec("Public method count", RiskProfile.ClassScanValues::publicMethodCount)),
+            Map.entry("efferentCouplingProxy",
+                    new ClassDimensionSpec("Efferent coupling (proxy)", RiskProfile.ClassScanValues::efferentCouplingProxy)),
+            Map.entry("efferentTypeCount",
+                    new ClassDimensionSpec("Efferent type count (Ce)", RiskProfile.ClassScanValues::efferentTypeCount)),
+            Map.entry("lcom3Index",
+                    new ClassDimensionSpec("LCOM3 cohesion index", RiskProfile.ClassScanValues::lcom3Times100)),
+            Map.entry("halsteadEffortClass",
+                    new ClassDimensionSpec("Class Halstead effort", RiskProfile.ClassScanValues::halsteadEffortRounded)),
+            Map.entry("godClassIndicator",
+                    new ClassDimensionSpec("God class candidate", RiskProfile.ClassScanValues::godClassIndicator)));
 }

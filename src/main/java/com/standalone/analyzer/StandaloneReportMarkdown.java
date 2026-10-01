@@ -4,8 +4,6 @@ import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonToken;
 import com.standalone.analyzer.AnalysisReport.ClassMetric;
 import com.standalone.analyzer.AnalysisReport.FileMetric;
-import com.standalone.analyzer.AnalysisReport.RiskHotspot;
-
 import java.io.IOException;
 import java.io.Reader;
 import java.io.StringWriter;
@@ -40,7 +38,8 @@ final class StandaloneReportMarkdown {
         AncestorIndex ancestors = new AncestorIndex();
         writeHeader(out, report.tool(), report.generatedAt(), report.analyzedPath(), report.parserLanguageLevel(),
                 report.riskModel(), report.summary());
-        writeHotspotSection(out, moduleRoots, report.topRiskyMethods(), ancestors);
+        writeIncrementalCacheSection(out, report.cacheStatistics(), report.incrementalChanges());
+        writeIncrementalChanges(out, report.incrementalChanges());
         writeMethodTableFromMetrics(out, moduleRoots, report.files(), ancestors);
         writeAncestorAppendix(out, ancestors);
         writeErrors(out, report.errors());
@@ -62,7 +61,7 @@ final class StandaloneReportMarkdown {
                 case "parserLanguageLevel" -> meta.parserLanguageLevel = reader.nextString();
                 case "riskModel" -> meta.riskModel = readRiskModelJson(reader);
                 case "summary" -> meta.summary = readSummaryJson(reader);
-                case "topRiskyMethods" -> meta.hotspots = readHotspotsJson(reader);
+                case "topRiskyMethods" -> skipValue(reader);
                 case "files" -> {
                     meta.filesSectionSeen = true;
                     flushHeader(out, meta);
@@ -90,7 +89,6 @@ final class StandaloneReportMarkdown {
         }
         writeHeader(out, meta.tool, meta.generatedAt, meta.analyzedPath, meta.parserLanguageLevel,
                 meta.riskModel, meta.summary);
-        writeHotspotSection(out, moduleRoots(meta.analyzedPath), meta.hotspots, meta.ancestors);
         meta.headerWritten = true;
     }
 
@@ -106,8 +104,8 @@ final class StandaloneReportMarkdown {
                                     AnalysisReport.Summary s) throws IOException {
         out.write("# Parser analiz raporu\n\n");
         out.write("Bu rapor **Java kaynak kodunu** tarayıp her **metod** için karmaşıklık ve **teknik risk** özetler.\n\n");
-        out.write("Ana tablolarda yalnızca **metod adı** (`Sınıf.metod(...)`) görünür; tam hiyerarşi yolu ");
-        out.write("(modül › dosya › sınıf › metod) **Metod hiyerarşi yolları** bölümünde düz satır listesindedir.\n\n");
+        out.write("Ana tablolarda **tek Risk skoru**, **SınıfAdı.metod(…n param)** ve **kaynak `.java` dosya adı** ");
+        out.write("görünür; tam dizin yolu **Metod hiyerarşi yolları** (M-kodu) bölümündedir.\n\n");
         if (riskModel != null) {
             out.write(describeRiskModelTr(riskModel) + "\n\n");
         }
@@ -124,14 +122,17 @@ final class StandaloneReportMarkdown {
         out.write("- **Primitive obsession (indeks):** İmzada primitive/String/boolean flag + gövdede string/primitive yoğunluğu.\n");
         out.write("- **Complex conditional:** Tek koşuldaki maksimum `&&` / `||` sayısı.\n\n");
         out.write("### Risk skoru ve seviye\n\n");
-        out.write("- **Risk (0–100):** Her ölçü 0–100 alt skor üretir; **en kötü ölçü** ile **tüm ölçülerin ");
-        out.write("ağırlıklı ortalaması** birleştirilir (profil katsayıları YAML’da). Skor **3 ondalık** ");
-        out.write("(ör. 68,374).\n");
+        out.write("- **Risk (0–100):** Enterprise v3’te dallanma, LOC, Halstead, kokular, lambda vb. **tüm boyutlar** ");
+        out.write("0–100 alt skora çevrilir; **en kötü boyut** ile **ağırlıklı ortalama** birleşerek **tek skor** ");
+        out.write("üretilir (profil YAML’da). Tabloda yalnızca bu nihai skor görünür; kırılım JSON `riskBreakdown`.\n");
         out.write("- **80+:** KRİTİK bandı; 100 tavan değil, üst sınır — ayırt için ince farklar korunur.\n");
         out.write("- **Neden (dominant):** Skoru en çok hangi **risk boyutu** şişirdi — örneğin “dallanma” veya “uzunluk”.\n");
         out.write("- **Dev metod:** Aşırı uzun veya aşırı karmaşık metod uyarısı.\n\n");
-        out.write("DÜŞÜK riskli metodlar aşağıdaki büyük tabloda **kasıtlı olarak yok** (okunabilirlik). ");
-        out.write("Lambda, catch kalitesi, switch vb. ek ayrıntılar **JSON raporunda** (`--output=…json`).\n\n");
+        out.write("Aşağıdaki tabloda **taranan her metod** risk skoruna göre sıralanır (DÜŞÜK dahil); ");
+        out.write("legacy/Halstead/koku girdileri skor sütunlarında ham sayı olarak görünür. ");
+        out.write("Halstead, kod kokuları, LCOM3, modül cache istatistikleri **JSON raporunda** (`--output=…json`).\n");
+        out.write("Incremental tarama: `run-analyze` varsayılan `--state=analysis-output/analyzer-state.json`; ");
+        out.write("yorum/boşluk-only değişikliklerde skor motoru **AST özeti aynıysa** atlanır.\n\n");
 
         out.write("## Tarama özeti\n\n");
         out.write("| Alan | Değer |\n|------|-------|\n");
@@ -179,72 +180,116 @@ final class StandaloneReportMarkdown {
         out.write("\n");
     }
 
-    private static void writeHotspotSection(Writer out, ModuleRootIndex moduleRoots,
-                                            List<RiskHotspot> hotspots, AncestorIndex ancestors)
-            throws IOException {
-        out.write("## En riskli metodlar\n\n");
-        out.write("| Sıra | Metod | Risk | Seviye | Dallanma | Satır | İç içe | Okunabilirlik | FOUT† | Nedeni | Kaynak satırı |\n");
-        out.write("|-----:|-------|-----:|--------|--------:|------:|-------:|--------------:|------:|--------|-------------:|\n");
-        int i = 1;
-        for (RiskHotspot h : hotspots) {
-            String chain = MethodHierarchy.breadcrumb(MethodHierarchy.ancestorPath(
-                    moduleRoots, h.file(), h.packageName(), h.className(), h.method()));
-            String shortLabel = MethodHierarchy.shortMethodLabel(h.className(), h.method());
-            ancestors.register(chain, shortLabel);
-            out.write("| " + i++ + " | " + formatTableMethodName(shortLabel) + " | "
-                    + fmt(h.riskScore()) + " | " + levelTr(h.riskLevel()) + " | "
-                    + h.cyclomaticComplexity() + " | " + h.codeLines() + " | " + h.maxNestingDepth()
-                    + " | " + h.cognitiveComplexity() + " | " + h.outboundDistinctCalls() + " | "
-                    + escapeCell(RiskBreakdownUtil.driverLabelTr(h.dominantDriver())) + " | "
-                    + h.startLine() + " |\n");
+    private static void writeIncrementalCacheSection(
+            Writer out, AnalysisReport.CacheStatistics cache, IncrementalChanges changes) throws IOException {
+        if (cache == null) {
+            return;
         }
-        out.write("\n† FOUT: katalog metriği; risk skoruna dahil değil.\n\n");
+        out.write("## Incremental cache (bu koşu)\n\n");
+        out.write("| Gösterge | Değer |\n|----------|------:|\n");
+        out.write("| Toplam dosya | " + cache.totalFiles() + " |\n");
+        out.write("| Atlandı (dosya byte hash) | " + cache.filesSkippedViaFileHash() + " |\n");
+        out.write("| Atlandı (modül toplu) | " + cache.filesSkippedViaModuleBulk() + " |\n");
+        out.write("| Atlandı (yorum/boşluk — AST aynı) | " + cache.filesSemanticCosmeticOnly() + " |\n");
+        out.write("| Yeniden analiz edilen dosya | " + cache.filesReanalyzed() + " |\n");
+        out.write("| Değişmeyen modül sayısı | " + cache.modulesUnchanged() + " |\n");
+        out.write("| Metod reuse / yeniden analiz | " + cache.methodsSkippedViaHash() + " / "
+                + cache.methodsReanalyzed() + " |\n");
+        out.write("| Süre (ms) | " + cache.scanTimeMillis() + " |\n\n");
+        if (changes != null && !changes.comparedToPreviousScan()) {
+            out.write("*İlk tarama veya cache sıfırlandı — önceki taramayla diff yok.*\n\n");
+        }
+    }
+
+    private static void writeIncrementalChanges(Writer out, IncrementalChanges changes) throws IOException {
+        if (changes == null || !changes.comparedToPreviousScan()) {
+            return;
+        }
+        out.write("## Son taramaya göre değişiklikler\n\n");
+        out.write("Önceki `analyzer-state.json` ile karşılaştırma. **Kozmetik** = dosya metni değişti ama ");
+        out.write("AST özeti (kod anlamı) aynı — risk skoru önceki taramadan taşındı.\n\n");
+        out.write("| Dosya | + | − | ~ kod | ~ kozmetik | = |\n");
+        out.write("|-------|--:|--:|------:|-----------:|--:|\n");
+        out.write("| **Toplam** | " + changes.filesAdded() + " | " + changes.filesRemoved() + " | "
+                + changes.filesModified() + " | " + changes.filesCosmeticOnly() + " | "
+                + changes.filesUnchanged() + " |\n\n");
+        out.write("Metod: **+" + changes.methodsAdded() + "** eklendi, **−" + changes.methodsRemoved()
+                + "** silindi, **~" + changes.methodsModified() + "** gövdesi değişti.\n\n");
+        List<IncrementalChanges.FilePathChange> cosmeticFiles = changes.fileChanges().stream()
+                .filter(f -> f.kind() == IncrementalChanges.ChangeKind.COSMETIC).toList();
+        if (!cosmeticFiles.isEmpty()) {
+            out.write("### Kozmetik değişen dosyalar (kod aynı)\n\n");
+            int limit = 20;
+            for (int i = 0; i < Math.min(cosmeticFiles.size(), limit); i++) {
+                out.write("- `" + escapeCell(cosmeticFiles.get(i).path()) + "`\n");
+            }
+            if (cosmeticFiles.size() > limit) {
+                out.write("- *(+" + (cosmeticFiles.size() - limit) + " dosya — JSON)*\n");
+            }
+            out.write("\n");
+        }
+        if (changes.methodChanges().isEmpty()) {
+            return;
+        }
+        out.write("| Dosya | Metod | Satır | Durum |\n");
+        out.write("|-------|-------|------:|-------|\n");
+        int limit = 40;
+        int n = 0;
+        for (IncrementalChanges.MethodPathChange mc : changes.methodChanges()) {
+            if (n++ >= limit) {
+                out.write("| … | | | *(daha fazlası JSON `incrementalChanges`)* |\n");
+                break;
+            }
+            String lines = mc.kind() == IncrementalChanges.ChangeKind.REMOVED
+                    ? "—" : mc.startLine() + "–" + mc.endLine();
+            String methodCell = MethodHierarchy.tableMethodLabel(mc.className(), mc.methodSignature());
+            out.write("| `" + escapeCell(mc.file()) + "` | "
+                    + formatTableMethodName(methodCell) + " | " + lines + " | "
+                    + switch (mc.kind()) {
+                case ADDED -> "yeni";
+                case REMOVED -> "silindi";
+                case MODIFIED -> "değişti";
+                case COSMETIC -> "kozmetik";
+            } + " |\n");
+        }
+        out.write("\n");
     }
 
     private static void writeMethodTableFromMetrics(Writer out, ModuleRootIndex moduleRoots,
                                                     List<FileMetric> files, AncestorIndex ancestors)
             throws IOException {
-        List<MethodRow> rows = collectMediumPlusRows(moduleRoots, files, ancestors);
+        List<MethodRow> rows = collectAllMethodRows(moduleRoots, files, ancestors);
         rows.sort(Comparator.comparingDouble(MethodRow::score).reversed());
         writeMethodTableIntro(out, rows.isEmpty());
         for (MethodRow r : rows) {
             writeMethodRow(out, r);
         }
         if (!rows.isEmpty()) {
-            out.write("\n");
+            out.write("\n† FOUT: katalog metriği; risk skoruna dahil değil.\n\n");
         }
     }
 
     private static void writeMethodTableIntro(Writer out, boolean empty) throws IOException {
-        out.write("## Metodlar (ORTA ve üzeri risk, skora göre)\n\n");
+        out.write("## Metodlar (risk skoruna göre)\n\n");
         if (empty) {
-            out.write("*Özet mod (`--detail=summary`) veya bu eşikte metod yok; yukarıdaki hotspot tablosuna bakın.*\n\n");
-            out.write("*DÜŞÜK riskli metodlar tabloda gösterilmez (bellek/okunabilirlik); tam liste için `--detail=full` JSON kullanın.*\n\n");
+            out.write("*Metod listesi yok — `--detail=full` ile tarayın (`summary` modunda Markdown tablosu doldurulmaz).*\n\n");
         } else {
-            out.write("Sütunlar: **Okunabilirlik** ham sayı; **FOUT†** katalog (skora girmez); **Nedeni** risk boyutu; ");
-            out.write("son sütun skora giren alt puanlar (dallanma / uzunluk / iç içe / parametre / okunabilirlik).\n\n");
-            out.write("| Risk | Seviye | Metod | Dallanma | Satır | İç içe | Okunabilirlik | FOUT† | Nedeni | Dev? | Alt puanlar (5 ölçü) |\n");
-            out.write("|-----:|--------|-------|--------:|------:|-------:|--------------:|----------:|--------|:----:|---------------------|\n");
+            MethodRiskTableColumns.writeScoreInputLegend(out);
+            MethodRiskTableColumns.writeMetricHeaderRow(out);
         }
     }
 
     private static void writeMethodRow(Writer out, MethodRow r) throws IOException {
-        RiskBreakdown b = r.breakdown();
-        String subs = b == null ? "—"
-                : fmt(b.ccSubScore()) + " / " + fmt(b.locSubScore()) + " / "
-                + fmt(b.nestingSubScore()) + " / " + fmt(b.paramsSubScore());
-        String cogSub = b == null ? "—" : fmt(b.cognitiveSubScore());
-        String subsExtended = subs + " / " + cogSub;
         out.write("| " + fmt(r.score()) + " | " + levelTr(r.level()) + " | "
-                + formatTableMethodName(r.shortLabel()) + " | "
-                + r.cc() + " | " + r.loc() + " | " + r.nest() + " | "
-                + r.cogCount() + " | " + r.foutCount() + " | "
-                + escapeCell(RiskBreakdownUtil.driverLabelTr(r.dominantDriver())) + " | "
-                + (r.god() ? "evet" : "hayır") + " | " + subsExtended + " |\n");
+                + r.ref() + " | " + formatTableMethodName(r.tableLabel()) + " | `"
+                + escapeCell(r.javaFile()) + "` |");
+        MethodRiskTableColumns.writeMetricCells(out, r.scan(), r.foutCatalog());
+        out.write(" " + escapeCell(RiskBreakdownUtil.driverLabelTr(r.dominantDriver())) + " | "
+                + (r.god() ? "evet" : "hayır") + " |\n");
     }
 
-    private static List<MethodRow> collectMediumPlusRows(ModuleRootIndex moduleRoots, List<FileMetric> files,
-                                                       AncestorIndex ancestors) {
+    private static List<MethodRow> collectAllMethodRows(ModuleRootIndex moduleRoots, List<FileMetric> files,
+                                                        AncestorIndex ancestors) {
         List<MethodRow> rows = new ArrayList<>();
         for (FileMetric file : files) {
             if (file.classes().isEmpty()) {
@@ -252,16 +297,14 @@ final class StandaloneReportMarkdown {
             }
             for (ClassMetric type : file.classes()) {
                 for (MethodMetric m : type.methods()) {
-                    if (!includeInMarkdownTable(m.riskLevel())) {
-                        continue;
-                    }
                     String chain = MethodHierarchy.breadcrumb(MethodHierarchy.ancestorPath(
                             moduleRoots, file.path(), file.packageName(), type.name(), m.signature()));
-                    String shortLabel = MethodHierarchy.shortMethodLabel(type.name(), m.signature());
-                    ancestors.register(chain, shortLabel);
-                    rows.add(new MethodRow(shortLabel, m.riskScore(), m.riskLevel(),
-                            m.cyclomaticComplexity(), m.codeLines(), m.maxNestingDepth(),
-                            m.cognitiveComplexity(), m.outboundDistinctCalls(),
+                    String tableLabel = MethodHierarchy.tableMethodLabel(type.name(), m.signature());
+                    String ref = ancestors.register(chain, tableLabel);
+                    String javaFile = MethodHierarchy.javaFileName(file.path());
+                    MethodScanValues scan = MethodScanValues.fromMetric(m);
+                    rows.add(new MethodRow(ref, tableLabel, javaFile, m.riskScore(), m.riskLevel(), scan,
+                            m.outboundDistinctCalls(),
                             RiskBreakdownUtil.dominantDriver(m.riskBreakdown()), m.godMethod(),
                             m.riskBreakdown()));
                 }
@@ -285,7 +328,7 @@ final class StandaloneReportMarkdown {
             writeMethodRow(out, r);
         }
         if (!rows.isEmpty()) {
-            out.write("\n");
+            out.write("\n† FOUT: katalog metriği; risk skoruna dahil değil.\n\n");
         }
     }
 
@@ -332,16 +375,14 @@ final class StandaloneReportMarkdown {
         reader.beginArray();
         while (reader.hasNext()) {
             MethodJson m = readMethodJson(reader);
-            if (!includeInMarkdownTable(m.level)) {
-                continue;
-            }
             String chain = MethodHierarchy.breadcrumb(MethodHierarchy.ancestorPath(
                     moduleRoots, path, packageName, className, m.signature));
-            String shortLabel = MethodHierarchy.shortMethodLabel(className, m.signature);
-            ancestors.register(chain, shortLabel);
+            String tableLabel = MethodHierarchy.tableMethodLabel(className, m.signature);
+            String ref = ancestors.register(chain, tableLabel);
             String driver = RiskBreakdownUtil.dominantDriver(m.breakdown);
-            rows.add(new MethodRow(shortLabel, m.score, m.level, m.cc, m.loc, m.nest,
-                    m.cogCount, m.foutCount, driver, m.god, m.breakdown));
+            String javaFile = MethodHierarchy.javaFileName(path);
+            rows.add(new MethodRow(ref, tableLabel, javaFile, m.score, m.level, m.toScanValues(),
+                    m.foutCount, driver, m.god, m.breakdown));
         }
         reader.endArray();
     }
@@ -355,8 +396,25 @@ final class StandaloneReportMarkdown {
                 case "cyclomaticComplexity" -> m.cc = reader.nextInt();
                 case "codeLines" -> m.loc = reader.nextInt();
                 case "maxNestingDepth" -> m.nest = reader.nextInt();
+                case "parameterCount" -> m.parameterCount = reader.nextInt();
                 case "cognitiveComplexity" -> m.cogCount = reader.nextInt();
+                case "logicalStatements" -> m.logicalStatements = reader.nextInt();
+                case "exitPoints" -> m.exitPoints = reader.nextInt();
+                case "catchClauses" -> m.catchClauses = reader.nextInt();
+                case "switchCases" -> m.switchCases = reader.nextInt();
                 case "outboundDistinctCalls" -> m.foutCount = reader.nextInt();
+                case "lambdaCount" -> m.lambdaCount = reader.nextInt();
+                case "maxTryNestingDepth" -> m.maxTryNestingDepth = reader.nextInt();
+                case "localVariableCount" -> m.localVariableCount = reader.nextInt();
+                case "maxMethodCallChainLength" -> m.maxMethodCallChainLength = reader.nextInt();
+                case "emptyCatchBlocks" -> m.emptyCatchBlocks = reader.nextInt();
+                case "catchExceptionOrThrowable" -> m.catchExceptionOrThrowable = reader.nextInt();
+                case "catchWithOnlyPrintStackTrace" -> m.catchWithOnlyPrintStackTrace = reader.nextInt();
+                case "primitiveObsessionIndex" -> m.primitiveObsessionIndex = reader.nextInt();
+                case "maxBooleanOperatorsInCondition" -> m.maxBooleanOperatorsInCondition = reader.nextInt();
+                case "halstead" -> readHalsteadIntoMethodJson(reader, m);
+                case "exceptionSmells" -> readExceptionSmellCounts(reader, m);
+                case "codeSmells" -> readCodeSmellCounts(reader, m);
                 case "godMethod" -> m.god = reader.nextBoolean();
                 case "riskScore" -> m.score = reader.nextDouble();
                 case "riskLevel" -> m.level = RiskLevel.valueOf(reader.nextString());
@@ -366,6 +424,62 @@ final class StandaloneReportMarkdown {
         }
         reader.endObject();
         return m;
+    }
+
+    private static void readHalsteadIntoMethodJson(JsonReader reader, MethodJson m) throws IOException {
+        reader.beginObject();
+        while (reader.hasNext()) {
+            switch (reader.nextName()) {
+                case "difficulty" -> m.halsteadDifficulty = reader.nextDouble();
+                case "effort" -> m.halsteadEffort = reader.nextDouble();
+                default -> skipValue(reader);
+            }
+        }
+        reader.endObject();
+        m.halsteadDifficultyRounded = (int) Math.round(m.halsteadDifficulty);
+        m.halsteadEffortRounded = (int) Math.min(Integer.MAX_VALUE, Math.round(m.halsteadEffort));
+    }
+
+    private static void readExceptionSmellCounts(JsonReader reader, MethodJson m) throws IOException {
+        reader.beginArray();
+        while (reader.hasNext()) {
+            reader.beginObject();
+            while (reader.hasNext()) {
+                if ("type".equals(reader.nextName())) {
+                    String type = reader.nextString();
+                    if ("SWALLOWED_EXCEPTION".equals(type)) {
+                        m.swallowedExceptionSmells++;
+                    } else if ("GENERIC_EXCEPTION_CATCH".equals(type)) {
+                        m.genericExceptionSmells++;
+                    }
+                } else {
+                    skipValue(reader);
+                }
+            }
+            reader.endObject();
+        }
+        reader.endArray();
+    }
+
+    private static void readCodeSmellCounts(JsonReader reader, MethodJson m) throws IOException {
+        reader.beginArray();
+        while (reader.hasNext()) {
+            reader.beginObject();
+            while (reader.hasNext()) {
+                if ("type".equals(reader.nextName())) {
+                    switch (reader.nextString()) {
+                        case "RAW_TYPE" -> m.rawTypeUsage++;
+                        case "STRING_CONCAT_IN_LOOP" -> m.stringConcatInLoop++;
+                        case "HARDCODED_IP", "HARDCODED_SQL", "HARDCODED_URL" -> m.hardcodedLiteralCount++;
+                        default -> { }
+                    }
+                } else {
+                    skipValue(reader);
+                }
+            }
+            reader.endObject();
+        }
+        reader.endArray();
     }
 
     private static RiskBreakdown readBreakdownJson(JsonReader reader) throws IOException {
@@ -512,55 +626,6 @@ final class StandaloneReportMarkdown {
         reader.endObject();
     }
 
-    private static List<RiskHotspot> readHotspotsJson(JsonReader reader) throws IOException {
-        List<RiskHotspot> hotspots = new ArrayList<>();
-        reader.beginArray();
-        while (reader.hasNext()) {
-            String file = "";
-            String packageName = "";
-            String className = "";
-            String method = "";
-            int startLine = 0;
-            double riskScore = 0;
-            RiskLevel riskLevel = RiskLevel.LOW;
-            int cc = 0;
-            int loc = 0;
-            int nest = 0;
-            int params = 0;
-            int cog = 0;
-            int fout = 0;
-            String dominantDriver = "—";
-            List<String> factors = List.of();
-            reader.beginObject();
-            while (reader.hasNext()) {
-                switch (reader.nextName()) {
-                    case "file" -> file = reader.nextString();
-                    case "packageName" -> packageName = reader.nextString();
-                    case "className" -> className = reader.nextString();
-                    case "method" -> method = reader.nextString();
-                    case "startLine" -> startLine = reader.nextInt();
-                    case "riskScore" -> riskScore = reader.nextDouble();
-                    case "riskLevel" -> riskLevel = RiskLevel.valueOf(reader.nextString());
-                    case "cyclomaticComplexity" -> cc = reader.nextInt();
-                    case "codeLines" -> loc = reader.nextInt();
-                    case "maxNestingDepth" -> nest = reader.nextInt();
-                    case "parameterCount" -> params = reader.nextInt();
-                    case "cognitiveComplexity" -> cog = reader.nextInt();
-                    case "outboundDistinctCalls" -> fout = reader.nextInt();
-                    case "dominantDriver" -> dominantDriver = reader.nextString();
-                    case "riskFactors" -> factors = readStringArray(reader);
-                    case "moduleRoot", "ancestorPath" -> skipValue(reader);
-                    default -> skipValue(reader);
-                }
-            }
-            reader.endObject();
-            hotspots.add(new RiskHotspot(file, packageName, className, method, startLine, riskScore, riskLevel,
-                    cc, loc, nest, params, cog, fout, dominantDriver, factors));
-        }
-        reader.endArray();
-        return hotspots;
-    }
-
     private static AnalysisReport.RiskModel readRiskModelJson(JsonReader reader) throws IOException {
         String version = "";
         String formula = "";
@@ -630,7 +695,7 @@ final class StandaloneReportMarkdown {
         }
         reader.endObject();
         return new ScanDiagnostics(status, lastPhase, fatalPhase, fatalMsg, lastFile, ratio,
-                Map.copyOf(byCat), List.copyOf(tips));
+                Map.copyOf(byCat), List.copyOf(tips), lastPhase, fatalPhase, List.copyOf(tips));
     }
 
     private static List<String> readStringArray(JsonReader reader) throws IOException {
@@ -691,10 +756,6 @@ final class StandaloneReportMarkdown {
         out.write("risk skoru ise sadece bu parser aracına özeldir.*\n");
     }
 
-    private static boolean includeInMarkdownTable(RiskLevel level) {
-        return level != RiskLevel.LOW;
-    }
-
     private static void skipValue(JsonReader reader) throws IOException {
         if (reader.peek() == JsonToken.NULL) {
             reader.nextNull();
@@ -733,10 +794,10 @@ final class StandaloneReportMarkdown {
             return;
         }
         out.write("## Metod hiyerarşi yolları\n\n");
-        out.write("Ana tablolardaki metodların tam konumu (`modül › dosya › sınıf › metod`). ");
-        out.write("Aynı metod adı birden fazla yerde geçiyorsa satırdaki **M** kodu ile ayırt edin:\n\n");
+        out.write("Tablodaki **M** kodunun dosya konumu (`modül › dosya › tam imza`). ");
+        out.write("Aynı isimli metodlar M kodu ile ayrılır:\n\n");
         for (AncestorIndex.Entry e : ancestors.entriesInOrder()) {
-            out.write("- **" + e.ref() + "** · `" + escapeCell(e.shortLabel()) + "` — `"
+            out.write("- **" + e.ref() + "** `" + escapeCell(e.tableLabel()) + "` → `"
                     + escapeCell(e.breadcrumb()) + "`\n");
         }
         out.write("\n");
@@ -747,8 +808,9 @@ final class StandaloneReportMarkdown {
         private final LinkedHashMap<String, Entry> breadcrumbToEntry = new LinkedHashMap<>();
         private int next = 1;
 
-        void register(String breadcrumb, String shortLabel) {
-            breadcrumbToEntry.computeIfAbsent(breadcrumb, k -> new Entry("M" + (next++), shortLabel, breadcrumb));
+        String register(String breadcrumb, String tableLabel) {
+            return breadcrumbToEntry.computeIfAbsent(breadcrumb, k -> new Entry("M" + (next++), tableLabel, breadcrumb))
+                    .ref();
         }
 
         boolean isEmpty() {
@@ -759,22 +821,32 @@ final class StandaloneReportMarkdown {
             return List.copyOf(breadcrumbToEntry.values());
         }
 
-        private record Entry(String ref, String shortLabel, String breadcrumb) {
+        private record Entry(String ref, String tableLabel, String breadcrumb) {
         }
     }
 
     private static String describeRiskModelTr(AnalysisReport.RiskModel riskModel) {
-        if ("v2".equals(riskModel.version())) {
-            return "**Puanlama:** enterprise-java (0–100) — 17 ölçü; skor ≈ %58 en kötü boyut + %42 ağırlıklı "
-                    + "ortalama + ince ayırıcı; seviye skora göre (30 / 50 / 80 eşikleri).";
+        if ("v2".equals(riskModel.version()) || "v3".equals(riskModel.version())) {
+            String suffix = "v3".equals(riskModel.version())
+                    ? " — Halstead, kod kokuları, exception kokuları ve sınıf LCOM3/Ce dahil (~25 metod boyutu)."
+                    : ".";
+            return "**Puanlama:** enterprise-java (0–100); skor ≈ %58 en kötü boyut + %42 ağırlıklı "
+                    + "ortalama + ince ayırıcı; seviye 30 / 50 / 80 eşikleri" + suffix;
         }
         return "**Puanlama:** klasik v1 (0–100) — dört boyut; %65 en kötü + %35 ağırlıklı karışım.";
     }
 
     private record MethodRow(
-            String shortLabel, double score, RiskLevel level,
-            int cc, int loc, int nest, int cogCount, int foutCount, String dominantDriver,
-            boolean god, RiskBreakdown breakdown) {
+            String ref,
+            String tableLabel,
+            String javaFile,
+            double score,
+            RiskLevel level,
+            MethodScanValues scan,
+            int foutCatalog,
+            String dominantDriver,
+            boolean god,
+            RiskBreakdown breakdown) {
     }
 
     private static final class MethodJson {
@@ -784,10 +856,42 @@ final class StandaloneReportMarkdown {
         int cc;
         int loc;
         int nest;
+        int parameterCount;
         int cogCount;
+        int logicalStatements;
+        int exitPoints;
+        int catchClauses;
+        int switchCases;
         int foutCount;
+        int lambdaCount;
+        int maxTryNestingDepth;
+        int localVariableCount;
+        int maxMethodCallChainLength;
+        int emptyCatchBlocks;
+        int catchExceptionOrThrowable;
+        int catchWithOnlyPrintStackTrace;
+        int primitiveObsessionIndex;
+        int maxBooleanOperatorsInCondition;
+        double halsteadDifficulty;
+        double halsteadEffort;
+        int halsteadDifficultyRounded;
+        int halsteadEffortRounded;
+        int rawTypeUsage;
+        int stringConcatInLoop;
+        int hardcodedLiteralCount;
+        int swallowedExceptionSmells;
+        int genericExceptionSmells;
         boolean god;
         RiskBreakdown breakdown;
+
+        MethodScanValues toScanValues() {
+            return new MethodScanValues(cc, loc, nest, parameterCount, cogCount, logicalStatements, exitPoints,
+                    catchClauses, switchCases, foutCount, lambdaCount, maxTryNestingDepth, localVariableCount,
+                    maxMethodCallChainLength, emptyCatchBlocks, catchExceptionOrThrowable,
+                    catchWithOnlyPrintStackTrace, primitiveObsessionIndex, maxBooleanOperatorsInCondition,
+                    halsteadDifficultyRounded, halsteadEffortRounded, rawTypeUsage, stringConcatInLoop,
+                    hardcodedLiteralCount, swallowedExceptionSmells, genericExceptionSmells);
+        }
     }
 
     private static final class JsonMeta {
@@ -797,7 +901,6 @@ final class StandaloneReportMarkdown {
         String parserLanguageLevel;
         AnalysisReport.RiskModel riskModel;
         AnalysisReport.Summary summary;
-        List<RiskHotspot> hotspots = List.of();
         List<AnalysisReport.FileError> errors = List.of();
         ScanDiagnostics scanDiagnostics;
         boolean headerWritten;

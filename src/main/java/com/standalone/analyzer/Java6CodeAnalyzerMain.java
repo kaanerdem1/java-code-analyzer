@@ -174,6 +174,8 @@ public final class Java6CodeAnalyzerMain {
                   --risk-config=<file>  Risk YAML path (default: config/risk-parameters-proposal.yaml)
                   --max-failure-ratio=<0-1>  Exit 2 if parse failures / files scanned exceeds ratio
                   --fail-on-risk=<LEVEL>   Exit 3 if any method or project risk >= LEVEL (LOW|MEDIUM|HIGH|CRITICAL)
+                  --state=<file>      Incremental cache JSON (Stage-1 file hash + Stage-2 method hash)
+                  --fresh             Ignore existing --state file (cold run, still writes state at end)
                   --help              Show this help
                 """);
     }
@@ -203,6 +205,8 @@ public final class Java6CodeAnalyzerMain {
             Path riskConfig = null;
             Double maxFailureRatio = null;
             RiskLevel failOnRisk = null;
+            Path incrementalState = null;
+            boolean freshIncremental = false;
 
             for (String arg : args) {
                 if (arg.equals("--help") || arg.equals("-h")) {
@@ -243,6 +247,10 @@ public final class Java6CodeAnalyzerMain {
                     maxFailureRatio = parseRatio(value(arg));
                 } else if (arg.startsWith("--fail-on-risk=")) {
                     failOnRisk = RiskLevel.valueOf(value(arg).trim().toUpperCase(Locale.ROOT));
+                } else if (arg.startsWith("--state=")) {
+                    incrementalState = Paths.get(pathValue(arg, "--state"));
+                } else if (arg.equals("--fresh")) {
+                    freshIncremental = true;
                 } else {
                     throw new IllegalArgumentException("Unknown argument: " + arg);
                 }
@@ -251,7 +259,7 @@ public final class Java6CodeAnalyzerMain {
                 throw new IllegalArgumentException("Missing required argument --path=<dir>");
             }
             ScanOptions scanOptions = ScanOptionsParser.parse(includes, excludes, workers, progressEvery, detail,
-                    !noDefaultIgnores);
+                    !noDefaultIgnores, incrementalState, freshIncremental);
             return new Options(path, output, markdown, top, charset, languageLevel, scanOptions, riskProfile,
                     riskConfig, maxFailureRatio, failOnRisk, compact, verbose, help);
         }

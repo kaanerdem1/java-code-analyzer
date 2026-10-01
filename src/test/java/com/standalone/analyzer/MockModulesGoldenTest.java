@@ -20,13 +20,13 @@ class MockModulesGoldenTest {
     @Test
     void enterpriseProfileDimensionCount() throws Exception {
         RiskProfile profile = RiskProfileLoader.load("enterprise-java", CONFIG);
-        assertEquals(18, profile.methodDimensions().size());
+        assertEquals(25, profile.methodDimensions().size());
     }
 
     @Test
     void paymentOrchestratorRouteStaysLowToMedium() throws Exception {
         MethodMetric route = analyzeMethod("PaymentOrchestrator", "route");
-        assertEquals(69.372, route.riskScore(), 0.5);
+        assertEquals(66.477, route.riskScore(), 0.5);
         assertEquals(RiskLevel.HIGH, route.riskLevel());
     }
 
@@ -34,14 +34,15 @@ class MockModulesGoldenTest {
     void dimensionMergerMergeRowsGoldenScore() throws Exception {
         MethodMetric merge = analyzeMethod("DimensionMerger", "mergeRows");
         assertEquals(13, merge.cyclomaticComplexity());
-        assertEquals(80.755, merge.riskScore(), 0.5);
+        assertEquals(86.375, merge.riskScore(), 0.5);
         assertEquals(RiskLevel.CRITICAL, merge.riskLevel());
     }
 
     @Test
     void strictReviewIsStricterThanEnterpriseOnSameSample() throws Exception {
         MethodScanValues heavy = new MethodScanValues(
-                14, 60, 6, 5, 18, 30, 7, 2, 4, 11, 1, 1, 6, 3, 0, 1, 0, 10, 4);
+                14, 60, 6, 5, 18, 30, 7, 2, 4, 11, 1, 1, 6, 3, 0, 1, 0, 10, 4,
+                0, 0, 0, 0, 0, 0, 0);
         double enterprise = new RiskCalculator(RiskProfileLoader.load("enterprise-java", CONFIG))
                 .assessMethod(heavy).score();
         double strict = new RiskCalculator(RiskProfileLoader.load("strict-review", CONFIG))

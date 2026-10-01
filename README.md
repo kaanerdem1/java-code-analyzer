@@ -4,6 +4,10 @@ Kaynak kodda **metod karmaşıklığı ve risk** (CC, LOC, nesting, hotspot, Tü
 
 Terminal / parse hataları: [scan-error-management.md](scan-error-management.md).
 
+Legacy/incremental katman dokümantasyonu: [standalone-java-code-analyzer-dokumantasyon.md](standalone-java-code-analyzer-dokumantasyon.md).
+
+**Incremental cache (varsayılan açık):** `run-analyze.sh` / `.cmd` otomatik `--state=analysis-output/analyzer-state.json` gönderir. Sıra: **modül toplu skip** (pom/Gradle kökü) → **dosya byte hash** → parse sonrası **AST özeti** (yorum/boşluk-only ise skor motoru atlanır) → **metod hash**. Risk profili / şema değişince cache otomatik sıfırlanır. `NO_STATE=1` kapatır; `FRESH=1` tek koşuda state okumaz. Detay: [docs/incremental-cache-tr.md](docs/incremental-cache-tr.md). Markdown raporda **Incremental cache** ve **değişiklikler** bölümleri.
+
 ### JAR (`target/` — repoda yok)
 
 Analyzer kökünde **bir kez** `mvn package` → `target/java-code-analyzer.jar`. Script JAR yoksa analyzer repodaysa otomatik derler. **JDK 17+** gerekir.

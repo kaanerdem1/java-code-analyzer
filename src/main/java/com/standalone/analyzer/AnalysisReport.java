@@ -14,7 +14,30 @@ public record AnalysisReport(
         List<RiskHotspot> topRiskyMethods,
         List<FileMetric> files,
         List<FileError> errors,
-        ScanDiagnostics scanDiagnostics) {
+        ScanDiagnostics scanDiagnostics,
+        CacheStatistics cacheStatistics,
+        IncrementalChanges incrementalChanges) {
+
+    public AnalysisReport {
+        incrementalChanges = incrementalChanges == null ? IncrementalChanges.empty() : incrementalChanges;
+    }
+
+    /**
+     * İki aşamalı lazy parse cache istatistikleri ({@link IncrementalAnalysisEngine}).
+     * Incremental kapalıysa {@code null}.
+     */
+    public record CacheStatistics(
+            int totalFiles,
+            int filesSkippedViaFileHash,
+            int filesReanalyzed,
+            int filesSemanticCosmeticOnly,
+            int filesSkippedViaModuleBulk,
+            int modulesUnchanged,
+            int totalMethods,
+            int methodsSkippedViaHash,
+            int methodsReanalyzed,
+            long scanTimeMillis) {
+    }
 
     /** Documents the composite score so JSON can be compared with PMD rule output. */
     public record RiskModel(
@@ -72,7 +95,38 @@ public record AnalysisReport(
             double riskScore,
             RiskLevel riskLevel,
             List<String> riskFactors,
-            List<ClassMetric> classes) {
+            List<ClassMetric> classes,
+            HalsteadMetrics halstead,
+            int swallowedExceptionCount,
+            int genericExceptionCatchCount,
+            int rawTypeUsageCount,
+            int stringConcatInLoopCount,
+            int hardcodedLiteralCount,
+            String fileHash,
+            boolean fullyReusedFromCache,
+            int methodsReusedFromCache) {
+
+        public FileMetric {
+            halstead = halstead == null ? HalsteadMetrics.EMPTY : halstead;
+            fileHash = fileHash == null ? "" : fileHash;
+        }
+
+        /** Önceki taramadan birebir kopya (Stage-1 dosya hash eşleşmesi). */
+        public FileMetric reusedCopy() {
+            return new FileMetric(path, packageName, physicalLines, codeLines, classCount, methodCount,
+                    totalCyclomaticComplexity, maxCyclomaticComplexity, riskScore, riskLevel, riskFactors,
+                    classes, halstead, swallowedExceptionCount, genericExceptionCatchCount,
+                    rawTypeUsageCount, stringConcatInLoopCount, hardcodedLiteralCount, fileHash, true, methodCount);
+        }
+
+        /** Byte hash güncellendi; metrikler önceki taramadan (yorum/boşluk-only drift). */
+        public FileMetric withRefreshedFileHash(String newFileHash) {
+            return new FileMetric(path, packageName, physicalLines, codeLines, classCount, methodCount,
+                    totalCyclomaticComplexity, maxCyclomaticComplexity, riskScore, riskLevel, riskFactors,
+                    classes, halstead, swallowedExceptionCount, genericExceptionCatchCount,
+                    rawTypeUsageCount, stringConcatInLoopCount, hardcodedLiteralCount, newFileHash, true,
+                    methodCount);
+        }
     }
 
     public record ClassMetric(
@@ -90,7 +144,21 @@ public record AnalysisReport(
             double riskScore,
             RiskLevel riskLevel,
             List<String> riskFactors,
-            List<MethodMetric> methods) {
+            List<MethodMetric> methods,
+            HalsteadMetrics halstead,
+            List<String> dependentTypes,
+            double lcom3,
+            boolean godClassCandidate,
+            int swallowedExceptionCount,
+            int genericExceptionCatchCount,
+            int rawTypeUsageCount,
+            int stringConcatInLoopCount,
+            int hardcodedLiteralCount) {
+
+        public ClassMetric {
+            halstead = halstead == null ? HalsteadMetrics.EMPTY : halstead;
+            dependentTypes = dependentTypes == null ? List.of() : List.copyOf(dependentTypes);
+        }
     }
 
     public record RiskHotspot(

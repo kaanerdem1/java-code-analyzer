@@ -25,6 +25,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Locale;
@@ -107,10 +108,53 @@ public final class ProjectAnalyzer {
                 scanOptions.reportDetail() == ReportDetail.SUMMARY
                         ? new ScanAccumulator(topN, moduleRoots) : null;
         run.phase(ScanPhase.PARSING);
-        List<FileMetric> files = parseAll(sources, base, errors, summaryAccumulator, run);
+        Path stateFile = scanOptions.incrementalStateFile();
+        boolean incremental = stateFile != null;
+        if (incremental && scanOptions.workers() > 1) {
+            System.err.println("[STANDALONE] Incremental cache: forcing workers=1 (parallel + state unsupported).");
+        }
+        AnalyzerState loadedState = incremental && !scanOptions.ignoreIncrementalCache()
+                ? new StatePersistenceManager().load(stateFile)
+                : new AnalyzerState();
+        boolean hadPreviousScan = incremental && !scanOptions.ignoreIncrementalCache()
+                && AnalyzerCacheIdentity.matches(loadedState, riskCalculator)
+                && loadedState.files != null && !loadedState.files.isEmpty();
+        if (incremental && !scanOptions.ignoreIncrementalCache() && !hadPreviousScan
+                && loadedState.files != null && !loadedState.files.isEmpty()) {
+            System.err.println("[STANDALONE] Cache outdated (risk profile or analyzer schema changed); full re-score.");
+        }
+        AnalyzerState previousState = hadPreviousScan ? loadedState : new AnalyzerState();
+        IncrementalAnalysisEngine incrementalEngine = incremental ? new IncrementalAnalysisEngine(previousState) : null;
+        AnalyzerState stateForDiff = hadPreviousScan ? loadedState : new AnalyzerState();
+        CacheRunCounters cacheCounters = incremental ? new CacheRunCounters() : null;
+        IncrementalScanContext scanContext = null;
+        if (incremental && incrementalEngine != null) {
+            scanContext = IncrementalModulePlanner.prepare(sources, base, moduleRoots, previousState);
+            if (scanContext.modulesUnchanged() > 0) {
+                System.err.printf(Locale.ROOT,
+                        "[STANDALONE] Incremental: %d/%d module(s) unchanged (bulk skip parse).%n",
+                        scanContext.modulesUnchanged(), scanContext.modulesScanned());
+            }
+        }
+        Map<String, String> semanticHashesByPath = incremental ? new HashMap<>() : Map.of();
+
+        List<FileMetric> files = parseAll(sources, base, errors, summaryAccumulator, run, incrementalEngine,
+                cacheCounters, scanContext, semanticHashesByPath);
         Collections.sort(files, (a, b) -> a.path().compareTo(b.path()));
         errors.sort(Comparator.comparing(FileError::file));
         run.phase(ScanPhase.REPORT_ASSEMBLY);
+
+        IncrementalChanges incrementalChanges = incremental
+                ? IncrementalChangeDetector.detect(stateForDiff, files, hadPreviousScan, semanticHashesByPath)
+                : IncrementalChanges.empty();
+        if (incremental && incrementalChanges.comparedToPreviousScan()) {
+            logIncrementalChanges(incrementalChanges);
+        }
+
+        if (incremental) {
+            persistAnalyzerState(stateFile, files, riskCalculator, semanticHashesByPath,
+                    scanContext != null ? scanContext.moduleFingerprints() : Map.of());
+        }
 
         int filesParsed = files.size();
         int filesFailed = errors.size();
@@ -124,39 +168,63 @@ public final class ProjectAnalyzer {
         long elapsedMs = (System.nanoTime() - started) / 1_000_000L;
         System.err.println("[STANDALONE] Parse wall time: " + elapsedMs + " ms");
 
+        AnalysisReport.CacheStatistics cacheStatistics = null;
+        if (incremental && cacheCounters != null) {
+            if (scanContext != null) {
+                cacheCounters.modulesUnchanged = scanContext.modulesUnchanged();
+            }
+            cacheStatistics = new AnalysisReport.CacheStatistics(sources.size(), cacheCounters.filesSkippedViaFileHash,
+                    cacheCounters.filesReanalyzed, cacheCounters.filesSemanticCosmeticOnly,
+                    cacheCounters.filesSkippedViaModuleBulk, cacheCounters.modulesUnchanged,
+                    cacheCounters.totalMethods, cacheCounters.methodsSkippedViaHash,
+                    cacheCounters.methodsReanalyzed, elapsedMs);
+            logCacheSummary(cacheStatistics);
+        }
+
         AnalysisReport report = new AnalysisReport(TOOL_NAME, Instant.now().toString(), absoluteRoot.toString(),
-                languageLevel.name(), riskCalculator.buildRiskModel(), summary, hotspots, reportFiles, errors, null);
+                languageLevel.name(), riskCalculator.buildRiskModel(), summary, hotspots, reportFiles, errors, null,
+                cacheStatistics, incrementalChanges);
         ScanDiagnostics diagnostics = ScanDiagnostics.from(report, run, null);
         run.phase(ScanPhase.COMPLETE);
         return new AnalysisReport(TOOL_NAME, report.generatedAt(), report.analyzedPath(),
                 report.parserLanguageLevel(), report.riskModel(), report.summary(), report.topRiskyMethods(),
-                report.files(), report.errors(), diagnostics);
+                report.files(), report.errors(), diagnostics, cacheStatistics, incrementalChanges);
     }
 
     private List<FileMetric> parseAll(List<Path> sources, Path base, List<FileError> errors,
-                                      ScanAccumulator summaryAccumulator, ScanRunContext run) {
+                                      ScanAccumulator summaryAccumulator, ScanRunContext run,
+                                      IncrementalAnalysisEngine incrementalEngine, CacheRunCounters cacheCounters,
+                                      IncrementalScanContext scanContext, Map<String, String> semanticHashesByPath) {
         if (sources.isEmpty()) {
             return new ArrayList<>();
         }
-        if (sources.size() == 1 || scanOptions.workers() == 1) {
-            return parseSequential(sources, base, errors, summaryAccumulator, run);
+        int workers = incrementalEngine != null ? 1 : scanOptions.workers();
+        if (sources.size() == 1 || workers == 1) {
+            return parseSequential(sources, base, errors, summaryAccumulator, run, incrementalEngine, cacheCounters,
+                    scanContext, semanticHashesByPath);
         }
-        return parseParallel(sources, base, errors, summaryAccumulator, run);
+        return parseParallel(sources, base, errors, summaryAccumulator, run, incrementalEngine, cacheCounters,
+                scanContext, semanticHashesByPath);
     }
 
     private List<FileMetric> parseSequential(List<Path> sources, Path base, List<FileError> errors,
-                                             ScanAccumulator summaryAccumulator, ScanRunContext run) {
+                                             ScanAccumulator summaryAccumulator, ScanRunContext run,
+                                             IncrementalAnalysisEngine incrementalEngine, CacheRunCounters cacheCounters,
+                                             IncrementalScanContext scanContext, Map<String, String> semanticHashesByPath) {
         List<FileMetric> files = new ArrayList<>();
         int processed = 0;
         for (Path source : sources) {
-            parseOne(source, base, files, errors, summaryAccumulator, run);
+            parseOne(source, base, files, errors, summaryAccumulator, run, incrementalEngine, cacheCounters,
+                    scanContext, semanticHashesByPath);
             logProgress(++processed, sources.size());
         }
         return files;
     }
 
     private List<FileMetric> parseParallel(List<Path> sources, Path base, List<FileError> errors,
-                                           ScanAccumulator summaryAccumulator, ScanRunContext run) {
+                                           ScanAccumulator summaryAccumulator, ScanRunContext run,
+                                           IncrementalAnalysisEngine incrementalEngine, CacheRunCounters cacheCounters,
+                                           IncrementalScanContext scanContext, Map<String, String> semanticHashesByPath) {
         List<FileMetric> files = Collections.synchronizedList(new ArrayList<>());
         AtomicInteger processed = new AtomicInteger();
 
@@ -165,7 +233,8 @@ public final class ProjectAnalyzer {
             List<Callable<Void>> tasks = new ArrayList<>();
             for (Path source : sources) {
                 tasks.add(() -> {
-                    parseOne(source, base, files, errors, summaryAccumulator, run);
+                    parseOne(source, base, files, errors, summaryAccumulator, run, incrementalEngine, cacheCounters,
+                            scanContext, semanticHashesByPath);
                     logProgress(processed.incrementAndGet(), sources.size());
                     return null;
                 });
@@ -188,10 +257,83 @@ public final class ProjectAnalyzer {
     }
 
     private void parseOne(Path source, Path base, List<FileMetric> files, List<FileError> errors,
-                          ScanAccumulator summaryAccumulator, ScanRunContext run) {
+                          ScanAccumulator summaryAccumulator, ScanRunContext run,
+                          IncrementalAnalysisEngine incrementalEngine, CacheRunCounters cacheCounters,
+                          IncrementalScanContext scanContext, Map<String, String> semanticHashesByPath) {
         String relative = relativePath(base, source);
         run.parsingFile(relative);
         try {
+            if (incrementalEngine != null) {
+                if (scanContext != null && scanContext.bulkReuse(relative)) {
+                    FileMetric reused = incrementalEngine.reusableFromState(relative);
+                    if (reused != null) {
+                        files.add(reused);
+                        if (cacheCounters != null) {
+                            cacheCounters.filesSkippedViaModuleBulk++;
+                            cacheCounters.totalMethods += reused.methodCount();
+                            cacheCounters.methodsSkippedViaHash += reused.methodCount();
+                        }
+                        copyPreviousSemanticHash(incrementalEngine, semanticHashesByPath, relative);
+                        ingestReused(relative, reused, summaryAccumulator);
+                        return;
+                    }
+                }
+                String precomputed = scanContext != null ? scanContext.byteHash(relative) : null;
+                IncrementalAnalysisEngine.CacheCheck check =
+                        incrementalEngine.checkFileCache(source, relative, precomputed);
+                if (check.canSkipParsing()) {
+                    FileMetric reused = check.reusableMetric().reusedCopy();
+                    files.add(reused);
+                    if (cacheCounters != null) {
+                        cacheCounters.filesSkippedViaFileHash++;
+                        cacheCounters.totalMethods += reused.methodCount();
+                        cacheCounters.methodsSkippedViaHash += reused.methodCount();
+                    }
+                    copyPreviousSemanticHash(incrementalEngine, semanticHashesByPath, relative);
+                    ingestReused(relative, reused, summaryAccumulator);
+                    return;
+                }
+                SourceParser.Outcome outcome = SourceParser.parse(source, sourceCharset(), languageLevel);
+                ParseResult<CompilationUnit> result = outcome.result();
+                if (result.isSuccessful() && result.getResult().isPresent()) {
+                    CompilationUnit cu = result.getResult().get();
+                    String semanticHash = HashService.semanticCompilationUnitHash(cu);
+                    semanticHashesByPath.put(relative, semanticHash);
+                    if (incrementalEngine.isSemanticOnlyDrift(relative, semanticHash)) {
+                        FileMetric cached = incrementalEngine.reusableFromState(relative);
+                        if (cached != null) {
+                            FileMetric metric = cached.withRefreshedFileHash(check.fileHash());
+                            files.add(metric);
+                            if (cacheCounters != null) {
+                                cacheCounters.filesSemanticCosmeticOnly++;
+                                cacheCounters.totalMethods += metric.methodCount();
+                                cacheCounters.methodsSkippedViaHash += metric.methodCount();
+                            }
+                            ingestReused(relative, metric, summaryAccumulator);
+                            return;
+                        }
+                    }
+                    FileMetric metric = incrementalEngine.buildFileMetric(relative, cu,
+                            check.fileHash(), riskCalculator,
+                            incrementalEngine.previousMethodsByKey(relative), summaryAccumulator);
+                    files.add(metric);
+                    if (cacheCounters != null) {
+                        cacheCounters.filesReanalyzed++;
+                        cacheCounters.totalMethods += metric.methodCount();
+                        cacheCounters.methodsSkippedViaHash += metric.methodsReusedFromCache();
+                        cacheCounters.methodsReanalyzed += metric.methodCount() - metric.methodsReusedFromCache();
+                    }
+                } else {
+                    String detail = describe(result.getProblems());
+                    if (outcome.attempted().size() > 1) {
+                        detail = detail + " (tried language levels: "
+                                + outcome.attempted().stream().map(Enum::name).collect(Collectors.joining(", "))
+                                + ")";
+                    }
+                    errors.add(fileError(relative, "Parse error: " + detail));
+                }
+                return;
+            }
             SourceParser.Outcome outcome = SourceParser.parse(source, sourceCharset(), languageLevel);
             ParseResult<CompilationUnit> result = outcome.result();
             if (result.isSuccessful() && result.getResult().isPresent()) {
@@ -217,6 +359,20 @@ public final class ProjectAnalyzer {
         } finally {
             run.clearParsingFile();
             run.fileFinished();
+        }
+    }
+
+    private static void copyPreviousSemanticHash(
+            IncrementalAnalysisEngine engine, Map<String, String> semanticHashesByPath, String relative) {
+        String previous = engine.previousSemanticFileHash(relative);
+        if (previous != null) {
+            semanticHashesByPath.put(relative, previous);
+        }
+    }
+
+    private static void ingestReused(String relative, FileMetric reused, ScanAccumulator summaryAccumulator) {
+        if (summaryAccumulator != null && !reused.classes().isEmpty()) {
+            summaryAccumulator.ingestFile(relative, reused.packageName(), reused.classes(), reused.codeLines());
         }
     }
 
@@ -350,37 +506,85 @@ public final class ProjectAnalyzer {
     // ------------------------------------------------------------------ per-file assembly
 
     private FileMetric buildFileMetric(String relativePath, CompilationUnit cu, ScanAccumulator summaryAccumulator) {
-        BitSet codeLines = ComplexityVisitor.computeCodeLines(cu);
-        ComplexityVisitor visitor = new ComplexityVisitor(riskCalculator, codeLines);
-        cu.accept(visitor, null);
-
-        List<ClassMetric> classes = visitor.getClassMetrics();
-        List<MethodMetric> methods = classes.stream().flatMap(c -> c.methods().stream()).toList();
-        int wmc = methods.stream().mapToInt(MethodMetric::cyclomaticComplexity).sum();
-        int maxCc = methods.stream().mapToInt(MethodMetric::cyclomaticComplexity).max().orElse(0);
-        int loc = codeLines.cardinality();
-
-        RiskCalculator.Assessment risk =
-                riskCalculator.assessAggregate(methods, loc, wmc, RiskCalculator.Scope.FILE);
-
-        String packageName = cu.getPackageDeclaration().map(p -> p.getNameAsString()).orElse("");
-        int physicalLines = cu.getRange().map(r -> r.end.line).orElse(0);
-
-        if (summaryAccumulator != null) {
-            summaryAccumulator.ingestFile(relativePath, packageName, classes, loc);
-            return slimFileMetric(relativePath, packageName, physicalLines, loc, classes.size(), methods.size(),
-                    wmc, maxCc, risk);
-        }
-
-        return new FileMetric(relativePath, packageName, physicalLines, loc, classes.size(), methods.size(),
-                wmc, maxCc, risk.score(), risk.level(), risk.factors(), classes);
+        return FileMetricsBuilder.build(relativePath, cu, riskCalculator, Map.of(), summaryAccumulator, "", false);
     }
 
-    private static FileMetric slimFileMetric(String relativePath, String packageName, int physicalLines, int loc,
-                                             int classCount, int methodCount, int wmc, int maxCc,
-                                             RiskCalculator.Assessment risk) {
-        return new FileMetric(relativePath, packageName, physicalLines, loc, classCount, methodCount,
-                wmc, maxCc, risk.score(), risk.level(), risk.factors(), List.of());
+    private static void logIncrementalChanges(IncrementalChanges changes) {
+        System.err.printf(Locale.ROOT,
+                "[STANDALONE] Since last scan: files +%d -%d ~%d cosmetic %d (= %d unchanged); methods +%d -%d ~%d%n",
+                changes.filesAdded(), changes.filesRemoved(), changes.filesModified(), changes.filesCosmeticOnly(),
+                changes.filesUnchanged(),
+                changes.methodsAdded(), changes.methodsRemoved(), changes.methodsModified());
+        int limit = 15;
+        int shown = 0;
+        for (IncrementalChanges.MethodPathChange mc : changes.methodChanges()) {
+            if (shown >= limit) {
+                System.err.println("[STANDALONE]   ... more method changes in JSON incrementalChanges");
+                break;
+            }
+            if (mc.kind() == IncrementalChanges.ChangeKind.REMOVED) {
+                System.err.printf(Locale.ROOT, "[STANDALONE]   %s %s.%s removed%n",
+                        mc.file(), mc.className(), mc.methodSignature());
+            } else {
+                System.err.printf(Locale.ROOT, "[STANDALONE]   %s %s.%s lines %d-%d (%s)%n",
+                        mc.file(), mc.className(), mc.methodSignature(), mc.startLine(), mc.endLine(),
+                        mc.kind().name().toLowerCase(Locale.ROOT));
+            }
+            shown++;
+        }
+    }
+
+    private static void persistAnalyzerState(
+            Path stateFile,
+            List<FileMetric> files,
+            RiskCalculator riskCalculator,
+            Map<String, String> semanticHashesByPath,
+            Map<String, String> moduleFingerprints) {
+        AnalyzerState newState = new AnalyzerState();
+        newState.cacheIdentity = AnalyzerCacheIdentity.current(riskCalculator);
+        for (Map.Entry<String, String> entry : moduleFingerprints.entrySet()) {
+            AnalyzerState.ModuleState moduleState = new AnalyzerState.ModuleState();
+            moduleState.fingerprint = entry.getValue();
+            newState.modules.put(entry.getKey(), moduleState);
+        }
+        for (FileMetric file : files) {
+            AnalyzerState.FileState fileState = new AnalyzerState.FileState();
+            fileState.fileHash = file.fileHash();
+            fileState.semanticFileHash = semanticHashesByPath.get(file.path());
+            fileState.cachedFileMetric = file;
+            for (ClassMetric type : file.classes()) {
+                for (MethodMetric method : type.methods()) {
+                    AnalyzerState.MethodState methodState = new AnalyzerState.MethodState();
+                    methodState.methodHash = method.methodHash();
+                    methodState.lastCalculatedRiskScore = method.riskScore();
+                    fileState.methods.put(type.name() + "#" + method.signature(), methodState);
+                }
+            }
+            newState.files.put(file.path(), fileState);
+        }
+        new StatePersistenceManager().save(stateFile, newState);
+    }
+
+    private static void logCacheSummary(AnalysisReport.CacheStatistics s) {
+        double seconds = s.scanTimeMillis() / 1000.0;
+        System.err.printf(Locale.ROOT,
+                "[STANDALONE] Incremental cache: files %d | skip file-hash %d | skip module-bulk %d | "
+                        + "re-parsed %d | skip cosmetic (AST) %d | modules unchanged %d | methods re-analyzed %d | "
+                        + "methods reused %d | %.1fs%n",
+                s.totalFiles(), s.filesSkippedViaFileHash(), s.filesSkippedViaModuleBulk(), s.filesReanalyzed(),
+                s.filesSemanticCosmeticOnly(), s.modulesUnchanged(), s.methodsReanalyzed(),
+                s.methodsSkippedViaHash(), seconds);
+    }
+
+    private static final class CacheRunCounters {
+        int filesSkippedViaFileHash;
+        int filesSkippedViaModuleBulk;
+        int filesReanalyzed;
+        int filesSemanticCosmeticOnly;
+        int modulesUnchanged;
+        int totalMethods;
+        int methodsSkippedViaHash;
+        int methodsReanalyzed;
     }
 
     // ------------------------------------------------------------------ report-level aggregation

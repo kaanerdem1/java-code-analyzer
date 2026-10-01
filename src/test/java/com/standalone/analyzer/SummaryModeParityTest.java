@@ -16,9 +16,11 @@ class SummaryModeParityTest {
         ParserConfiguration.LanguageLevel level = ParserConfiguration.LanguageLevel.JAVA_17;
 
         ProjectAnalyzer fullAnalyzer = new ProjectAnalyzer(StandardCharsets.UTF_8, 20, level,
-                new ScanOptions(1, 500, java.util.List.of(), java.util.List.of(), ScanOptions.ReportDetail.FULL, true));
+                new ScanOptions(1, 500, java.util.List.of(), java.util.List.of(), ScanOptions.ReportDetail.FULL, true,
+                        null, false));
         ProjectAnalyzer summaryAnalyzer = new ProjectAnalyzer(StandardCharsets.UTF_8, 20, level,
-                new ScanOptions(1, 500, java.util.List.of(), java.util.List.of(), ScanOptions.ReportDetail.SUMMARY, true));
+                new ScanOptions(1, 500, java.util.List.of(), java.util.List.of(), ScanOptions.ReportDetail.SUMMARY, true,
+                        null, false));
 
         AnalysisReport full = fullAnalyzer.analyze(root);
         AnalysisReport summary = summaryAnalyzer.analyze(root);

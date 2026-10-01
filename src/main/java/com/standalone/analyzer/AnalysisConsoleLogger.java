@@ -116,7 +116,7 @@ final class AnalysisConsoleLogger {
         int max = 25;
         for (AnalysisReport.FileError e : errors) {
             if (shown >= max) {
-                err.println(TAG + " ... " + (errors.size() - max) + " more (see report § Okunamayan dosyalar)");
+                err.println(TAG + " ... " + (errors.size() - max) + " more (see report: unreadable files section)");
                 break;
             }
             err.println(TAG + " " + e.file() + " [" + e.category().name() + "]: " + e.message());
@@ -129,32 +129,32 @@ final class AnalysisConsoleLogger {
             return;
         }
         PrintStream err = System.err;
-        err.println(TAG + " --- Tarama tanıları ---");
-        err.println(TAG + " Durum: " + diagnostics.completionStatus()
-                + " | son aşama: " + diagnostics.lastPhaseTr());
+        err.println(TAG + " --- Scan diagnostics ---");
+        err.println(TAG + " Status: " + diagnostics.completionStatus()
+                + " | last phase: " + diagnostics.lastPhaseEn());
         if (diagnostics.fatalMessage() != null) {
-            err.println(TAG + " FATAL aşama=" + diagnostics.fatalPhaseTr() + ": " + diagnostics.fatalMessage());
+            err.println(TAG + " FATAL phase=" + diagnostics.fatalPhaseEn() + ": " + diagnostics.fatalMessage());
         }
         if (diagnostics.lastFileAttempted() != null && !diagnostics.lastFileAttempted().isBlank()) {
-            err.println(TAG + " Son işlenen dosya: " + diagnostics.lastFileAttempted());
+            err.println(TAG + " Last file: " + diagnostics.lastFileAttempted());
         }
-        err.printf(Locale.US, TAG + " Parse hata oranı: %.1f%%%n", diagnostics.parseFailureRatio() * 100);
+        err.printf(Locale.US, TAG + " Parse failure ratio: %.1f%%%n", diagnostics.parseFailureRatio() * 100);
         if (!diagnostics.errorsByCategory().isEmpty()) {
-            err.println(TAG + " Hata kategorileri: " + diagnostics.errorsByCategory());
+            err.println(TAG + " Error categories: " + diagnostics.errorsByCategory());
         }
-        for (String tip : diagnostics.recommendationsTr()) {
-            err.println(TAG + " → " + tip);
+        for (String tip : diagnostics.recommendationsEn()) {
+            err.println(TAG + " -> " + tip);
         }
-        err.println(TAG + " Ayrıntı: scan-error-management.md");
+        err.println(TAG + " Details: scan-error-management.md");
     }
 
     static void logFatal(ScanPhase phase, String message, String lastFile) {
         PrintStream err = System.err;
-        err.println(TAG + " FATAL aşama=" + phase.labelTr() + ": " + message);
+        err.println(TAG + " FATAL phase=" + phase.labelEn() + ": " + message);
         if (lastFile != null && !lastFile.isBlank()) {
-            err.println(TAG + " Son dosya: " + lastFile);
+            err.println(TAG + " Last file: " + lastFile);
         }
-        err.println(TAG + " Rapor eksik olabilir; scan-error-management.md");
+        err.println(TAG + " Report may be incomplete; see scan-error-management.md");
     }
 
     private static String formatThresholds(AnalysisReport.RiskModel model) {

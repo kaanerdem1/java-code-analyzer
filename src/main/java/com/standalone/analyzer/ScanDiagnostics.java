@@ -16,7 +16,10 @@ record ScanDiagnostics(
         String lastFileAttempted,
         double parseFailureRatio,
         Map<String, Integer> errorsByCategory,
-        List<String> recommendationsTr) {
+        List<String> recommendationsTr,
+        String lastPhaseEn,
+        String fatalPhaseEn,
+        List<String> recommendationsEn) {
 
     static ScanDiagnostics from(AnalysisReport report, ScanRunContext context, Integer exitCode) {
         AnalysisReport.Summary s = report.summary();
@@ -31,14 +34,19 @@ record ScanDiagnostics(
                 .forEach(e -> named.put(e.getKey().name(), e.getValue()));
 
         double ratio = s.filesScanned() > 0 ? (double) s.filesFailed() / s.filesScanned() : 0.0;
-        List<String> tips = buildRecommendations(named, ratio, report.parserLanguageLevel(), context, exitCode);
+        List<String> tipsTr = buildRecommendationsTr(named, ratio, report.parserLanguageLevel(), context, exitCode);
+        List<String> tipsEn = buildRecommendationsEn(named, ratio, report.parserLanguageLevel(), context, exitCode);
 
         String status;
         String fatalTr = null;
+        String fatalEn = null;
         String fatalMsg = null;
         if (context != null && context.fatal()) {
             status = "FAILED_FATAL";
-            fatalTr = context.fatalPhase() != null ? context.fatalPhase().labelTr() : null;
+            if (context.fatalPhase() != null) {
+                fatalTr = context.fatalPhase().labelTr();
+                fatalEn = context.fatalPhase().labelEn();
+            }
             fatalMsg = context.fatalMessage();
         } else if (s.filesFailed() > 0) {
             status = "COMPLETED_WITH_FILE_ERRORS";
@@ -57,10 +65,13 @@ record ScanDiagnostics(
                 lastFile,
                 ratio,
                 Map.copyOf(named),
-                List.copyOf(tips));
+                List.copyOf(tipsTr),
+                lastPhase.labelEn(),
+                fatalEn,
+                List.copyOf(tipsEn));
     }
 
-    private static List<String> buildRecommendations(
+    private static List<String> buildRecommendationsTr(
             Map<String, Integer> byCat,
             double ratio,
             String languageLevel,
@@ -94,7 +105,46 @@ record ScanDiagnostics(
             tips.add("CI exit 3: --fail-on-risk tetiklendi; parse başarısından bağımsız risk gate.");
         }
         if (tips.isEmpty()) {
-            tips.add("Kritik dosya hatası yok; özet ve hotspot tablolarını kullanabilirsiniz.");
+            tips.add("Kritik dosya hatası yok; özet ve metod tablosunu kullanabilirsiniz.");
+        }
+        return tips;
+    }
+
+    private static List<String> buildRecommendationsEn(
+            Map<String, Integer> byCat,
+            double ratio,
+            String languageLevel,
+            ScanRunContext context,
+            Integer exitCode) {
+        List<String> tips = new ArrayList<>();
+        if (context != null && context.fatal()) {
+            tips.add("Run stopped with fatal error; phase: "
+                    + (context.fatalPhase() != null ? context.fatalPhase().labelEn() : "?")
+                    + (context.currentFile() != null ? "; last file: " + context.currentFile() : "")
+                    + ".");
+        }
+        int syntax = byCat.getOrDefault(ScanErrorCategory.PARSE_SYNTAX.name(), 0);
+        int lang = byCat.getOrDefault(ScanErrorCategory.PARSE_LANGUAGE_LEVEL.name(), 0);
+        if (syntax + lang > 0) {
+            tips.add("See scan-error-management.md for parse errors (unexpected token, etc.).");
+        }
+        if (lang > 0) {
+            tips.add("Mixed Java versions: per-file language fallback is enabled; try LANGUAGE_LEVEL=JAVA_21 "
+                    + "(current " + languageLevel + ") or scan modules separately.");
+        }
+        if (ratio > 0.1 && ratio <= 1.0) {
+            tips.add(String.format(Locale.US,
+                    "Parse failure ratio %.1f%% — narrow --path to src/main/java; exclude target/build/generated.",
+                    ratio * 100));
+        }
+        if (exitCode != null && exitCode == ScanExitEvaluator.EXIT_PARSE_FAILURE_RATIO) {
+            tips.add("CI exit 2: --max-failure-ratio exceeded; report was still written — fix sources or raise threshold.");
+        }
+        if (exitCode != null && exitCode == ScanExitEvaluator.EXIT_RISK_GATE) {
+            tips.add("CI exit 3: --fail-on-risk triggered (independent of parse success).");
+        }
+        if (tips.isEmpty()) {
+            tips.add("No critical file errors; use summary and method table in the report.");
         }
         return tips;
     }

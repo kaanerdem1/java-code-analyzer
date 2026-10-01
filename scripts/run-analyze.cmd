@@ -63,13 +63,19 @@ if "%FIXED_REPORT%"=="1" (
     set "MD=%%b"
   )
 )
-for %%F in ("%MD%") do echo [STANDALONE] Rapor dosyasi: %%~nxF
+for %%F in ("%MD%") do echo [STANDALONE] Report file: %%~nxF
 
-java -jar "%JAR%" --path="%SOURCE%" --output="%JSON%" --markdown="%MD%" --top=20 --language-level=%LANGUAGE_LEVEL%
+set "STATE_ARGS="
+if not "%NO_STATE%"=="1" (
+  set "STATE_ARGS=--state=%OUTPUT_DIR%\analyzer-state.json"
+  if "%FRESH%"=="1" set "STATE_ARGS=%STATE_ARGS% --fresh"
+)
+
+java -jar "%JAR%" --path="%SOURCE%" --output="%JSON%" --markdown="%MD%" --top=20 --language-level=%LANGUAGE_LEVEL% %STATE_ARGS%
 if errorlevel 1 exit /b 1
 
 echo.
-echo Bitti.
+echo Done.
 echo   Markdown: %MD%
 echo   JSON:     %JSON%
 endlocal
