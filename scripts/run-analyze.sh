@@ -39,6 +39,10 @@ if [[ -n "${EXCLUDE_GLOBS}" ]]; then EXTRA+=(--exclude="${EXCLUDE_GLOBS}"); fi
 mkdir -p "${OUT_DIR}"
 
 assign_report_paths "${OUT_DIR}" "${SOURCE}"
+if [[ -z "${JSON:-}" || -z "${MD:-}" ]]; then
+  echo "[HATA] Rapor yolu uretilemedi (JSON/MD bos). OUTPUT_DIR=${OUT_DIR}" >&2
+  exit 1
+fi
 echo "[STANDALONE] Report file: $(basename "${MD}")"
 
 if ! JAR="$(ensure_analyzer_jar "${ROOT}")"; then

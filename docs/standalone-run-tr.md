@@ -71,7 +71,9 @@ cd ~/projects/mobil-backend
 
 ## `Empty value for --output=` ne demek?
 
-CLI, `--output=` sonrasında **boş** yol görünce durur. “Çıktı klasörü bilinmiyor” değil; **java satırına giden `--output` değeri boş**.
+Eski JAR’larda CLI, `--output=` sonrasında **boş** yol görünce dururdu. Güncel sürümde boş `--output=` / `--markdown=` **yok sayılır** ve `{taranan_kök}/analysis-output/standalone.json` + `parser-raporu.md` kullanılır; `run-analyze.cmd` ayrıca PowerShell başarısız olursa **CMD yedek yolu** üretir.
+
+Yine de hata görürsen: **JAR’ı yenile** (`mvn package` → `target/java-code-analyzer.jar` kopyala).
 
 Sık nedenler:
 

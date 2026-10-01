@@ -207,6 +207,8 @@ public final class Java6CodeAnalyzerMain {
             RiskLevel failOnRisk = null;
             Path incrementalState = null;
             boolean freshIncremental = false;
+            boolean outputFlagSeen = false;
+            boolean markdownFlagSeen = false;
 
             for (String arg : args) {
                 if (arg.equals("--help") || arg.equals("-h")) {
@@ -218,9 +220,11 @@ public final class Java6CodeAnalyzerMain {
                 } else if (arg.startsWith("--path=")) {
                     path = Paths.get(pathValue(arg, "--path"));
                 } else if (arg.startsWith("--output=")) {
-                    output = Paths.get(pathValue(arg, "--output"));
+                    outputFlagSeen = true;
+                    output = optionalPathArg(arg, "--output");
                 } else if (arg.startsWith("--markdown=")) {
-                    markdown = Paths.get(pathValue(arg, "--markdown"));
+                    markdownFlagSeen = true;
+                    markdown = optionalPathArg(arg, "--markdown");
                 } else if (arg.startsWith("--top=")) {
                     top = parseTop(value(arg));
                 } else if (arg.startsWith("--encoding=")) {
@@ -248,7 +252,7 @@ public final class Java6CodeAnalyzerMain {
                 } else if (arg.startsWith("--fail-on-risk=")) {
                     failOnRisk = RiskLevel.valueOf(value(arg).trim().toUpperCase(Locale.ROOT));
                 } else if (arg.startsWith("--state=")) {
-                    incrementalState = Paths.get(pathValue(arg, "--state"));
+                    incrementalState = optionalPathArg(arg, "--state");
                 } else if (arg.equals("--fresh")) {
                     freshIncremental = true;
                 } else {
@@ -258,6 +262,9 @@ public final class Java6CodeAnalyzerMain {
             if (!help && path == null) {
                 throw new IllegalArgumentException("Missing required argument --path=<dir>");
             }
+            OutputTargets targets = coalesceOutputPaths(path, output, markdown, outputFlagSeen, markdownFlagSeen);
+            output = targets.json();
+            markdown = targets.markdown();
             ScanOptions scanOptions = ScanOptionsParser.parse(includes, excludes, workers, progressEvery, detail,
                     !noDefaultIgnores, incrementalState, freshIncremental);
             return new Options(path, output, markdown, top, charset, languageLevel, scanOptions, riskProfile,
@@ -282,6 +289,70 @@ public final class Java6CodeAnalyzerMain {
             } catch (NumberFormatException e) {
                 throw new IllegalArgumentException(flag + " must be an integer: " + raw);
             }
+        }
+
+        /**
+         * Empty {@code --output=} / {@code --markdown=} from Windows CMD are ignored (see {@link #coalesceOutputPaths}).
+         */
+        private static Path optionalPathArg(String arg, String flag) {
+            String raw = arg.substring(flag.length() + 1).trim();
+            if (raw.isEmpty()) {
+                return null;
+            }
+            return Paths.get(pathValue(arg, flag));
+        }
+
+        private record OutputTargets(Path json, Path markdown) {
+        }
+
+        /**
+         * Fill missing JSON/Markdown when a flag was present but empty (typical Windows {@code --output=}).
+         * If neither flag was passed, JSON stays on stdout.
+         */
+        private static OutputTargets coalesceOutputPaths(Path scanRoot, Path output, Path markdown,
+                                                         boolean outputFlagSeen, boolean markdownFlagSeen) {
+            if (!outputFlagSeen && !markdownFlagSeen) {
+                return new OutputTargets(output, markdown);
+            }
+            if (output != null && markdown != null) {
+                return new OutputTargets(output, markdown);
+            }
+            if (output == null && markdown != null) {
+                return new OutputTargets(jsonSiblingForMarkdown(markdown), markdown);
+            }
+            if (output != null) {
+                return new OutputTargets(output, markdownSiblingForJson(output));
+            }
+            Path outDir = scanRoot.resolve("analysis-output");
+            return new OutputTargets(outDir.resolve("standalone.json"), outDir.resolve("parser-raporu.md"));
+        }
+
+        private static Path jsonSiblingForMarkdown(Path markdown) {
+            String file = markdown.getFileName().toString();
+            if (file.endsWith(".md")) {
+                String base = file.substring(0, file.length() - 3);
+                if (base.startsWith("parser")) {
+                    return markdown.resolveSibling("standalone" + base.substring("parser".length()) + ".json");
+                }
+                return markdown.resolveSibling(base + ".json");
+            }
+            Path parent = markdown.getParent();
+            return parent != null ? parent.resolve("standalone.json") : Paths.get("standalone.json");
+        }
+
+        private static Path markdownSiblingForJson(Path json) {
+            String name = json.getFileName().toString();
+            if (name.startsWith("standalone") && name.endsWith(".json")) {
+                String mid = name.substring("standalone".length(), name.length() - 5);
+                if (mid.isEmpty()) {
+                    return json.resolveSibling("parser-raporu.md");
+                }
+                return json.resolveSibling("parser" + mid + ".md");
+            }
+            if (name.endsWith(".json")) {
+                return json.resolveSibling(name.substring(0, name.length() - 5) + ".md");
+            }
+            return json.resolveSibling("parser-raporu.md");
         }
 
         private static String value(String arg) {
