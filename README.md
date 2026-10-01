@@ -2,7 +2,7 @@
 
 Kaynak kodda **metod karmaşıklığı ve risk** (CC, LOC, nesting, hotspot, Türkçe Markdown/JSON). **Call-graph / servis→metod çağrı zinciri bu repoda yok** — etki analizi ve lineage ayrı uygulamada.
 
-Terminal / parse hataları: [scan-error-management.md](scan-error-management.md).
+Terminal / parse hataları: [scan-error-management.md](scan-error-management.md). Çalıştırma ve `Empty value for --output=`: [docs/standalone-run-tr.md](docs/standalone-run-tr.md).
 
 Legacy/incremental katman dokümantasyonu: [standalone-java-code-analyzer-dokumantasyon.md](standalone-java-code-analyzer-dokumantasyon.md).
 
