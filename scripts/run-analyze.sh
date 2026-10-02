@@ -46,8 +46,8 @@ fi
 echo "[STANDALONE] Report file: $(basename "${MD}")"
 
 if ! JAR="$(ensure_analyzer_jar "${ROOT}")"; then
-  echo "[HATA] java-code-analyzer.jar bulunamadi (dist/ veya target/)"
-  echo "       git pull veya dist/java-code-analyzer.jar kopyalayin"
+  echo "[HATA] java-code-analyzer.jar bulunamadi: target/java-code-analyzer.jar"
+  echo "       mvn package veya ANALYZER_JAR=/yol/java-code-analyzer.jar"
   echo "       ANALYZER_JAR=/tam/yol/java-code-analyzer.jar ./scripts/run-analyze.sh"
   exit 1
 fi

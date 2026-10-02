@@ -53,10 +53,8 @@ public final class RiskCalculator {
     }
 
     public Assessment assessMethod(MethodScanValues values) {
-        double dominant = 0.0;
-        double blend = 0.0;
         List<String> factors = new ArrayList<>();
-
+        Map<String, Double> subById = new LinkedHashMap<>();
         double ccSub = 0;
         double locSub = 0;
         double nestSub = 0;
@@ -69,8 +67,7 @@ public final class RiskCalculator {
         for (RiskProfile.ScoredDimension<MethodScanValues> dimension : profile.methodDimensions()) {
             int raw = dimension.value().applyAsInt(values);
             double sub = subScore(raw, dimension.medium(), dimension.high(), dimension.critical());
-            dominant = Math.max(dominant, sub);
-            blend += dimension.weight() * sub;
+            subById.put(dimension.id(), sub);
             describe(factors, dimension.label(), raw, sub, dimension.high(), dimension.critical());
             switch (dimension.id()) {
                 case "branching" -> ccSub = sub;
@@ -83,6 +80,10 @@ public final class RiskCalculator {
                 default -> extraSubScores.put(dimension.id(), roundScore(sub));
             }
         }
+
+        MixResult mix = blendFromSubScores(subById);
+        double dominant = mix.dominant();
+        double blend = mix.blend();
 
         double mixedCore = profile.dominantWeight() * dominant + profile.blendWeight() * blend;
         double fine = discriminativeFine(values);
@@ -250,6 +251,49 @@ public final class RiskCalculator {
 
     private static long mix(long acc, int value) {
         return acc * 31L + (value & 0xFFFFL);
+    }
+
+    private record MixResult(double dominant, double blend) {
+    }
+
+    private MixResult blendFromSubScores(Map<String, Double> subById) {
+        if (profile.methodDimensionGroups().isEmpty()) {
+            double dominant = 0.0;
+            double blend = 0.0;
+            for (RiskProfile.ScoredDimension<MethodScanValues> dimension : profile.methodDimensions()) {
+                double sub = subById.getOrDefault(dimension.id(), 0.0);
+                dominant = Math.max(dominant, sub);
+                blend += dimension.weight() * sub;
+            }
+            return new MixResult(dominant, blend);
+        }
+        Map<String, RiskProfile.ScoredDimension<MethodScanValues>> dimById = new LinkedHashMap<>();
+        for (RiskProfile.ScoredDimension<MethodScanValues> d : profile.methodDimensions()) {
+            dimById.put(d.id(), d);
+        }
+        double dominant = 0.0;
+        double blend = 0.0;
+        for (RiskProfile.DimensionGroup group : profile.methodDimensionGroups()) {
+            double groupMax = 0.0;
+            double groupBlend = 0.0;
+            double weightSum = 0.0;
+            for (String memberId : group.memberIds()) {
+                RiskProfile.ScoredDimension<MethodScanValues> dimension = dimById.get(memberId);
+                if (dimension == null) {
+                    continue;
+                }
+                double sub = subById.getOrDefault(memberId, 0.0);
+                groupMax = Math.max(groupMax, sub);
+                groupBlend += dimension.weight() * sub;
+                weightSum += dimension.weight();
+            }
+            if (weightSum > 0) {
+                groupBlend /= weightSum;
+            }
+            dominant = Math.max(dominant, groupMax);
+            blend += group.weight() * groupBlend;
+        }
+        return new MixResult(dominant, blend);
     }
 
     /** Sub-score on 0–100 (piecewise linear bands). */

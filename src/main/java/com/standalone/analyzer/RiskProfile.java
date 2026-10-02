@@ -13,8 +13,12 @@ public record RiskProfile(
         double dominantWeight,
         double blendWeight,
         List<ScoredDimension<MethodScanValues>> methodDimensions,
+        List<DimensionGroup> methodDimensionGroups,
         List<ScoredDimension<ClassScanValues>> classDimensions,
         Map<String, ThresholdTriple> godMethodThresholds) {
+
+    public record DimensionGroup(String id, double weight, List<String> memberIds) {
+    }
 
     public RiskProfile {
         if (dominantWeight <= 0 && blendWeight <= 0) {
@@ -96,6 +100,7 @@ public record RiskProfile(
                                 3, 4, 8, MethodScanValues::maxNestingDepth),
                         dim("parameters", "Parameter count", 0.15,
                                 5, 7, 12, MethodScanValues::parameterCount)),
+                List.of(),
                 List.of(),
                 Map.of(
                         "branching", new ThresholdTriple(10, 15, 30),

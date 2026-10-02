@@ -27,7 +27,7 @@ final class SupplementalMetrics {
         Map<String, TypeDeclaration<?>> typesByName = indexTypes(cu);
         List<ClassMetric> enriched = new ArrayList<>(classes.size());
         for (ClassMetric type : classes) {
-            TypeDeclaration<?> decl = typesByName.get(type.name());
+            TypeDeclaration<?> decl = resolveTypeDeclaration(typesByName, type.name());
             Set<String> efferent = decl == null ? Set.of()
                     : TypeDependencyAnalyzer.collectEfferentTypes(decl);
             List<String> dependentTypes = efferent.stream().limit(40).toList();
@@ -74,7 +74,7 @@ final class SupplementalMetrics {
                                              Map<String, MethodMetric> previousMethods,
                                              LegacyTypeMetrics legacyType) {
         String cacheKey = typeName + "#" + method.signature();
-        LegacyMethodMetrics legacy = legacyType.methods().getOrDefault(cacheKey, LegacyMethodMetrics.empty());
+        LegacyMethodMetrics legacy = resolveLegacyMethodMetrics(legacyType, typeName, method.signature());
         MethodMetric previous = previousMethods.get(cacheKey);
         String methodHash = legacy.methodHash();
         boolean reuse = previous != null && methodHash.equals(previous.methodHash()) && !methodHash.isEmpty();
@@ -103,6 +103,43 @@ final class SupplementalMetrics {
                 method.riskFactors(), method.riskBreakdown(), halstead, exceptionSmells, codeSmells,
                 methodHash.isEmpty() ? legacy.methodHash() : methodHash, reuse || method.analysisReused(),
                 legacy.accessedFieldNames());
+    }
+
+    /** {@link ClassMetric#name()} is often a simple/nested name; index keys are FQN. */
+    private static TypeDeclaration<?> resolveTypeDeclaration(Map<String, TypeDeclaration<?>> typesByName,
+                                                             String typeName) {
+        TypeDeclaration<?> direct = typesByName.get(typeName);
+        if (direct != null) {
+            return direct;
+        }
+        for (Map.Entry<String, TypeDeclaration<?>> entry : typesByName.entrySet()) {
+            String key = entry.getKey();
+            if (key.equals(typeName) || key.endsWith("." + typeName)) {
+                return entry.getValue();
+            }
+        }
+        return null;
+    }
+
+    /** Same suffix rules as {@link ComplexityVisitor} legacy index lookup. */
+    private static LegacyMethodMetrics resolveLegacyMethodMetrics(LegacyTypeMetrics legacyType, String typeName,
+                                                                  String signature) {
+        Map<String, LegacyMethodMetrics> methods = legacyType.methods();
+        LegacyMethodMetrics hit = methods.get(typeName + "#" + signature);
+        if (hit != null) {
+            return hit;
+        }
+        String suffix = "#" + signature;
+        for (Map.Entry<String, LegacyMethodMetrics> entry : methods.entrySet()) {
+            if (!entry.getKey().endsWith(suffix)) {
+                continue;
+            }
+            String cls = entry.getKey().substring(0, entry.getKey().length() - suffix.length());
+            if (cls.equals(typeName) || cls.endsWith("." + typeName) || typeName.endsWith("." + cls)) {
+                return entry.getValue();
+            }
+        }
+        return LegacyMethodMetrics.empty();
     }
 
     private static Map<String, TypeDeclaration<?>> indexTypes(CompilationUnit cu) {

@@ -39,6 +39,7 @@
                                 <source>${project.basedir}/module-auth/src/main/java</source>
                                 <source>${project.basedir}/module-reporting/src/main/java</source>
                                 <source>${project.basedir}/module-integration/src/main/java</source>
+                                <source>${project.basedir}/module-v3fixtures/src/main/java</source>
                             </sources>
                         </configuration>
                     </execution>

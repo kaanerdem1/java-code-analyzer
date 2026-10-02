@@ -80,13 +80,49 @@ public final class RiskProfileLoader {
         }
         normalizeClassWeights(classDims);
 
+        List<RiskProfile.DimensionGroup> methodGroups = readDimensionGroups(profile);
+
         Map<String, RiskProfile.ThresholdTriple> god = new LinkedHashMap<>();
         god.put("branching", findThreshold(methodDims, "branching").orElse(new RiskProfile.ThresholdTriple(10, 15, 25)));
         god.put("length", findThreshold(methodDims, "length").orElse(new RiskProfile.ThresholdTriple(25, 55, 120)));
         god.put("parameters", findThreshold(methodDims, "parameters").orElse(new RiskProfile.ThresholdTriple(4, 6, 8)));
 
         return new RiskProfile(profileId, modelVersion, compound, mix.dominant(), mix.blend(),
-                List.copyOf(methodDims), List.copyOf(classDims), Map.copyOf(god));
+                List.copyOf(methodDims), List.copyOf(methodGroups), List.copyOf(classDims), Map.copyOf(god));
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<RiskProfile.DimensionGroup> readDimensionGroups(Map<String, Object> profile) {
+        Object node = profile.get("dimension_groups");
+        if (!(node instanceof Map<?, ?> groups)) {
+            return List.of();
+        }
+        List<RiskProfile.DimensionGroup> out = new ArrayList<>();
+        for (Map.Entry<?, ?> entry : groups.entrySet()) {
+            String id = String.valueOf(entry.getKey());
+            if (!(entry.getValue() instanceof Map<?, ?> body)) {
+                continue;
+            }
+            double weight = body.get("weight") instanceof Number n ? n.doubleValue() : 1.0;
+            List<String> members = new ArrayList<>();
+            if (body.get("members") instanceof List<?> list) {
+                for (Object m : list) {
+                    members.add(String.valueOf(m));
+                }
+            }
+            if (!members.isEmpty()) {
+                out.add(new RiskProfile.DimensionGroup(id, weight, List.copyOf(members)));
+            }
+        }
+        double sum = out.stream().mapToDouble(RiskProfile.DimensionGroup::weight).sum();
+        if (sum <= 0) {
+            return List.copyOf(out);
+        }
+        List<RiskProfile.DimensionGroup> normalized = new ArrayList<>(out.size());
+        for (RiskProfile.DimensionGroup g : out) {
+            normalized.add(new RiskProfile.DimensionGroup(g.id(), g.weight() / sum, g.memberIds()));
+        }
+        return List.copyOf(normalized);
     }
 
     private record ScoreMix(double dominant, double blend) {
