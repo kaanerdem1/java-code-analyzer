@@ -2,8 +2,15 @@ package com.standalone.analyzer;
 
 import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.body.CallableDeclaration;
+import com.github.javaparser.ast.body.Parameter;
+import com.github.javaparser.ast.body.VariableDeclarator;
+import com.github.javaparser.ast.expr.FieldAccessExpr;
+import com.github.javaparser.ast.expr.LiteralExpr;
+import com.github.javaparser.ast.expr.NameExpr;
+import com.github.javaparser.ast.stmt.BlockStmt;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -21,6 +28,8 @@ import java.util.regex.Pattern;
  *   <li>{@link #normalizedMethodHash(CallableDeclaration)} — hash of a method/constructor body
  *       after comments and incidental whitespace/indentation are normalised away (Stage 2:
  *       decides whether that one method's risk analysis can be skipped).</li>
+ *   <li>{@link #structuralHash(BlockStmt)} — identifier/literal-abstracted body hash for
+ *       Type-1/2 duplicate grouping ({@link DuplicateDetectionEngine}).</li>
  * </ul>
  */
 final class HashService {
@@ -54,6 +63,18 @@ final class HashService {
 
     static String normalizedMethodHash(CallableDeclaration<?> declaration) {
         return normalizeSourceText(declaration.toString());
+    }
+
+    static String structuralHash(BlockStmt body) {
+        BlockStmt clone = body.clone();
+        clone.findAll(NameExpr.class).forEach(n -> n.setName("ID"));
+        clone.findAll(FieldAccessExpr.class).forEach(n -> n.setName("ID"));
+        clone.findAll(VariableDeclarator.class).forEach(n -> n.setName("ID"));
+        clone.findAll(Parameter.class).forEach(n -> n.setName("ID"));
+        for (LiteralExpr literal : new ArrayList<>(clone.findAll(LiteralExpr.class))) {
+            literal.replace(new NameExpr("LIT"));
+        }
+        return normalizeSourceText(clone.toString());
     }
 
     private static String normalizeSourceText(String printed) {

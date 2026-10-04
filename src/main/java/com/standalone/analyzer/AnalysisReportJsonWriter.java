@@ -33,6 +33,8 @@ final class AnalysisReportJsonWriter {
         writeScanDiagnostics(w, report.scanDiagnostics());
         writeCacheStatistics(w, report.cacheStatistics());
         writeIncrementalChanges(w, report.incrementalChanges());
+        writeDuplicateStatistics(w, report.duplicateStatistics());
+        writeDuplicateGroups(w, report.duplicateGroups());
         writeHotspots(w, report.topRiskyMethods());
         writeFiles(w, report.files());
         writeErrors(w, report.errors());
@@ -251,7 +253,46 @@ final class AnalysisReportJsonWriter {
         writeCodeSmells(w, m.codeSmells());
         w.name("methodHash").value(m.methodHash());
         w.name("analysisReused").value(m.analysisReused());
+        w.name("structuralHash").value(m.structuralHash());
         w.endObject();
+    }
+
+    private static void writeDuplicateStatistics(JsonWriter w, AnalysisReport.DuplicateStatistics stats)
+            throws IOException {
+        w.name("duplicateStatistics");
+        w.beginObject();
+        w.name("exactGroups").value(stats.exactGroups());
+        w.name("methodsInExactGroups").value(stats.methodsInExactGroups());
+        w.name("nearMissGroups").value(stats.nearMissGroups());
+        w.name("methodsInNearMissGroups").value(stats.methodsInNearMissGroups());
+        w.endObject();
+    }
+
+    private static void writeDuplicateGroups(JsonWriter w, List<AnalysisReport.DuplicateGroup> groups)
+            throws IOException {
+        w.name("duplicateGroups");
+        w.beginArray();
+        for (AnalysisReport.DuplicateGroup group : groups) {
+            w.beginObject();
+            w.name("groupId").value(group.groupId());
+            w.name("similarityType").value(group.similarityType());
+            w.name("matchedTokenCount").value(group.matchedTokenCount());
+            w.name("duplicatedLines").value(group.duplicatedLines());
+            w.name("members");
+            w.beginArray();
+            for (AnalysisReport.DuplicateMember member : group.members()) {
+                w.beginObject();
+                w.name("file").value(member.file());
+                w.name("className").value(member.className());
+                w.name("method").value(member.method());
+                w.name("startLine").value(member.startLine());
+                w.name("endLine").value(member.endLine());
+                w.endObject();
+            }
+            w.endArray();
+            w.endObject();
+        }
+        w.endArray();
     }
 
     private static void writeCacheStatistics(JsonWriter w, AnalysisReport.CacheStatistics cache) throws IOException {

@@ -37,7 +37,7 @@ public final class ScanMetricsCalibration {
         Path config = Path.of("config/risk-parameters-proposal.yaml");
         RiskProfile profile = RiskProfileLoader.load("enterprise-java", config);
         ScanOptions options = new ScanOptions(1, 500, List.of(), List.of("**/src/test/**"),
-                ScanOptions.ReportDetail.FULL, true, null, false);
+                ScanOptions.ReportDetail.FULL, true, null, false, false, 50);
         ProjectAnalyzer analyzer = new ProjectAnalyzer(StandardCharsets.UTF_8, 5,
                 com.github.javaparser.ParserConfiguration.LanguageLevel.JAVA_17, options,
                 new RiskCalculator(profile));

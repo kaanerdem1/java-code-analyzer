@@ -7,6 +7,8 @@ import com.github.javaparser.ParserConfiguration;
 import com.github.javaparser.Problem;
 import com.github.javaparser.ast.CompilationUnit;
 import com.standalone.analyzer.AnalysisReport.ClassMetric;
+import com.standalone.analyzer.AnalysisReport.DuplicateGroup;
+import com.standalone.analyzer.AnalysisReport.DuplicateStatistics;
 import com.standalone.analyzer.AnalysisReport.FileError;
 import com.standalone.analyzer.AnalysisReport.FileMetric;
 import com.standalone.analyzer.AnalysisReport.RiskHotspot;
@@ -59,6 +61,7 @@ public final class ProjectAnalyzer {
     private final int topN;
     private final ParserConfiguration.LanguageLevel languageLevel;
     private final ScanOptions scanOptions;
+    private final DuplicateDetectionEngine duplicateDetectionEngine = new DuplicateDetectionEngine();
 
     public ProjectAnalyzer(Charset sourceCharset, int topN, ParserConfiguration.LanguageLevel languageLevel) {
         this(sourceCharset, topN, languageLevel, ScanOptions.defaults(), new RiskCalculator());
@@ -181,14 +184,63 @@ public final class ProjectAnalyzer {
             logCacheSummary(cacheStatistics);
         }
 
+        List<DuplicateGroup> duplicateGroups = detectDuplicateGroups(absoluteRoot, reportFiles);
+        DuplicateStatistics duplicateStatistics = summariseDuplicates(duplicateGroups);
+        logDuplicateSummary(duplicateStatistics);
+
         AnalysisReport report = new AnalysisReport(TOOL_NAME, Instant.now().toString(), absoluteRoot.toString(),
                 languageLevel.name(), riskCalculator.buildRiskModel(), summary, hotspots, reportFiles, errors, null,
-                cacheStatistics, incrementalChanges);
+                cacheStatistics, incrementalChanges, duplicateStatistics, duplicateGroups);
         ScanDiagnostics diagnostics = ScanDiagnostics.from(report, run, null);
         run.phase(ScanPhase.COMPLETE);
         return new AnalysisReport(TOOL_NAME, report.generatedAt(), report.analyzedPath(),
                 report.parserLanguageLevel(), report.riskModel(), report.summary(), report.topRiskyMethods(),
-                report.files(), report.errors(), diagnostics, cacheStatistics, incrementalChanges);
+                report.files(), report.errors(), diagnostics, cacheStatistics, incrementalChanges,
+                duplicateStatistics, duplicateGroups);
+    }
+
+    private List<DuplicateGroup> detectDuplicateGroups(Path absoluteRoot, List<FileMetric> files) {
+        if (!scanOptions.detectDuplicates()) {
+            return List.of();
+        }
+        List<DuplicateGroup> groups = new ArrayList<>();
+        groups.addAll(duplicateDetectionEngine.detectExactDuplicates(files));
+        try {
+            groups.addAll(duplicateDetectionEngine.detectNearMissDuplicates(
+                    absoluteRoot, scanOptions.minDuplicateTokens(), files));
+        } catch (RuntimeException e) {
+            System.err.println("[STANDALONE] Near-miss duplicate detection (PMD CPD) failed, "
+                    + "continuing with exact-duplicate results only: " + e);
+        }
+        return groups;
+    }
+
+    private static DuplicateStatistics summariseDuplicates(List<DuplicateGroup> groups) {
+        int exactGroups = 0;
+        int nearMissGroups = 0;
+        int methodsInExact = 0;
+        int methodsInNearMiss = 0;
+        for (DuplicateGroup group : groups) {
+            if ("EXACT_STRUCTURE".equals(group.similarityType())) {
+                exactGroups++;
+                methodsInExact += group.members().size();
+            } else {
+                nearMissGroups++;
+                methodsInNearMiss += group.members().size();
+            }
+        }
+        return new DuplicateStatistics(exactGroups, methodsInExact, nearMissGroups, methodsInNearMiss);
+    }
+
+    private static void logDuplicateSummary(DuplicateStatistics stats) {
+        if (stats.exactGroups() == 0 && stats.nearMissGroups() == 0) {
+            return;
+        }
+        System.err.printf(Locale.ROOT,
+                "[STANDALONE] Duplicates: %d exact-structure group(s) (%d methods) | "
+                        + "%d near-miss group(s) (%d methods)%n",
+                stats.exactGroups(), stats.methodsInExactGroups(),
+                stats.nearMissGroups(), stats.methodsInNearMissGroups());
     }
 
     private List<FileMetric> parseAll(List<Path> sources, Path base, List<FileError> errors,

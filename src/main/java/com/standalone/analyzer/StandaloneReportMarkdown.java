@@ -3,6 +3,9 @@ package com.standalone.analyzer;
 import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonToken;
 import com.standalone.analyzer.AnalysisReport.ClassMetric;
+import com.standalone.analyzer.AnalysisReport.DuplicateGroup;
+import com.standalone.analyzer.AnalysisReport.DuplicateMember;
+import com.standalone.analyzer.AnalysisReport.DuplicateStatistics;
 import com.standalone.analyzer.AnalysisReport.FileMetric;
 import java.io.IOException;
 import java.io.Reader;
@@ -41,6 +44,7 @@ final class StandaloneReportMarkdown {
         writeIncrementalCacheSection(out, report.cacheStatistics(), report.incrementalChanges());
         writeIncrementalChanges(out, report.incrementalChanges());
         writeMethodTableFromMetrics(out, moduleRoots, report.files(), ancestors);
+        writeDuplicateSection(out, report.duplicateStatistics(), report.duplicateGroups());
         writeAncestorAppendix(out, ancestors);
         writeErrors(out, report.errors());
         writeScanDiagnostics(out, report.scanDiagnostics());
@@ -69,6 +73,8 @@ final class StandaloneReportMarkdown {
                 }
                 case "errors" -> meta.errors = readErrorsJson(reader);
                 case "scanDiagnostics" -> meta.scanDiagnostics = readScanDiagnosticsJson(reader);
+                case "duplicateStatistics" -> meta.duplicateStatistics = readDuplicateStatisticsJson(reader);
+                case "duplicateGroups" -> meta.duplicateGroups = readDuplicateGroupsJson(reader);
                 default -> skipValue(reader);
             }
         }
@@ -77,6 +83,7 @@ final class StandaloneReportMarkdown {
         if (!meta.filesSectionSeen) {
             writeMethodTableIntro(out, true);
         }
+        writeDuplicateSection(out, meta.duplicateStatistics, meta.duplicateGroups);
         writeAncestorAppendix(out, meta.ancestors);
         writeErrors(out, meta.errors);
         writeScanDiagnostics(out, meta.scanDiagnostics);
@@ -720,6 +727,148 @@ final class StandaloneReportMarkdown {
         out.write("\n");
     }
 
+    private static void writeDuplicateSection(Writer out, DuplicateStatistics stats,
+                                              List<DuplicateGroup> groups) throws IOException {
+        DuplicateStatistics s = stats == null
+                ? new DuplicateStatistics(0, 0, 0, 0) : stats;
+        List<DuplicateGroup> g = groups == null ? List.of() : groups;
+        if (s.exactGroups() == 0 && s.nearMissGroups() == 0 && g.isEmpty()) {
+            return;
+        }
+        out.write("## Tekrarlayan / benzer kod (duplicate)\n\n");
+        out.write("Tarama bittikten sonra proje genelinde aranır: **birebir / isim değişmiş** kopyalar ");
+        out.write("yapısal hash ile, **yakın benzer** bloklar PMD CPD ile. Küçük metodlar (düşük CC ve az satır) ");
+        out.write("filtrelenir. `--no-duplicates` ile kapatılabilir.\n\n");
+        out.write("**Nasıl okunur?** Her **grup** = aynı (veya çok benzer) kod parçasının farklı yerlerde tekrarı. ");
+        out.write("Gruptaki madde sayısı = **kaç konum** (dosya + metod); listedeki her satır bir kopyanın yeri — ");
+        out.write("hepsi birbirine benzer, çift çift eşleşme tablosu değil.\n\n");
+        out.write("### Özet\n\n");
+        out.write("| Tür | Grup sayısı | Konum sayısı |\n|-----|------------:|-------------:|\n");
+        out.write("| Birebir yapı (EXACT_STRUCTURE) | " + s.exactGroups() + " | "
+                + s.methodsInExactGroups() + " |\n");
+        out.write("| Yakın benzer (NEAR_MISS) | " + s.nearMissGroups() + " | "
+                + s.methodsInNearMissGroups() + " |\n\n");
+        out.write("*Çok grup çıkıyorsa (JSON yazıcı gibi tekrarlı `w.name` kalıpları) eşiği yükseltin: ");
+        out.write("`--min-duplicate-tokens=80` veya `--no-duplicates`.*\n\n");
+        if (g.isEmpty()) {
+            out.write("*Grup detayı yok — JSON `duplicateGroups`.*\n\n");
+            return;
+        }
+        out.write("### Gruplar\n\n");
+        int limit = 40;
+        int shown = 0;
+        for (DuplicateGroup rawGroup : g) {
+            if (shown >= limit) {
+                out.write("*(" + (g.size() - limit) + " grup daha — JSON `duplicateGroups`)*\n\n");
+                break;
+            }
+            shown++;
+            DuplicateGroup group = DuplicateMemberConsolidation.consolidateGroup(rawGroup);
+            List<DuplicateMember> members = group.members();
+            out.write("#### " + escapeCell(group.groupId()) + " — "
+                    + duplicateTypeLabelTr(group.similarityType()));
+            if ("NEAR_MISS".equals(group.similarityType()) && group.matchedTokenCount() > 0) {
+                out.write(" (~" + group.matchedTokenCount() + " token");
+                if (group.duplicatedLines() > 0) {
+                    out.write(", çekirdek " + group.duplicatedLines() + " satır");
+                }
+                out.write(")");
+            } else if (group.duplicatedLines() > 0) {
+                out.write(" (" + group.duplicatedLines() + " satır)");
+            }
+            out.write(" — **" + members.size() + " konum**\n\n");
+            for (DuplicateMember member : members) {
+                out.write("- `" + escapeCell(member.file()) + "` · **" + escapeCell(member.className())
+                        + "** · `" + escapeCell(member.method()) + "` — satır **"
+                        + member.startLine() + "–" + member.endLine() + "**\n");
+            }
+            out.write("\n");
+        }
+    }
+
+    private static String duplicateTypeLabelTr(String similarityType) {
+        if ("EXACT_STRUCTURE".equals(similarityType)) {
+            return "Birebir / isim değişmiş yapı";
+        }
+        if ("NEAR_MISS".equals(similarityType)) {
+            return "Yakın benzer kopya";
+        }
+        return nullSafe(similarityType);
+    }
+
+    private static DuplicateStatistics readDuplicateStatisticsJson(JsonReader reader) throws IOException {
+        int exactGroups = 0;
+        int methodsInExact = 0;
+        int nearMissGroups = 0;
+        int methodsInNearMiss = 0;
+        reader.beginObject();
+        while (reader.hasNext()) {
+            switch (reader.nextName()) {
+                case "exactGroups" -> exactGroups = reader.nextInt();
+                case "methodsInExactGroups" -> methodsInExact = reader.nextInt();
+                case "nearMissGroups" -> nearMissGroups = reader.nextInt();
+                case "methodsInNearMissGroups" -> methodsInNearMiss = reader.nextInt();
+                default -> skipValue(reader);
+            }
+        }
+        reader.endObject();
+        return new DuplicateStatistics(exactGroups, methodsInExact, nearMissGroups, methodsInNearMiss);
+    }
+
+    private static List<DuplicateGroup> readDuplicateGroupsJson(JsonReader reader) throws IOException {
+        List<DuplicateGroup> groups = new ArrayList<>();
+        reader.beginArray();
+        while (reader.hasNext()) {
+            String groupId = "";
+            String similarityType = "";
+            int matchedTokenCount = 0;
+            int duplicatedLines = 0;
+            List<DuplicateMember> members = List.of();
+            reader.beginObject();
+            while (reader.hasNext()) {
+                switch (reader.nextName()) {
+                    case "groupId" -> groupId = reader.nextString();
+                    case "similarityType" -> similarityType = reader.nextString();
+                    case "matchedTokenCount" -> matchedTokenCount = reader.nextInt();
+                    case "duplicatedLines" -> duplicatedLines = reader.nextInt();
+                    case "members" -> members = readDuplicateMembersJson(reader);
+                    default -> skipValue(reader);
+                }
+            }
+            reader.endObject();
+            groups.add(new DuplicateGroup(groupId, similarityType, matchedTokenCount, duplicatedLines, members));
+        }
+        reader.endArray();
+        return groups;
+    }
+
+    private static List<DuplicateMember> readDuplicateMembersJson(JsonReader reader) throws IOException {
+        List<DuplicateMember> members = new ArrayList<>();
+        reader.beginArray();
+        while (reader.hasNext()) {
+            String file = "";
+            String className = "";
+            String method = "";
+            int startLine = 0;
+            int endLine = 0;
+            reader.beginObject();
+            while (reader.hasNext()) {
+                switch (reader.nextName()) {
+                    case "file" -> file = reader.nextString();
+                    case "className" -> className = reader.nextString();
+                    case "method" -> method = reader.nextString();
+                    case "startLine" -> startLine = reader.nextInt();
+                    case "endLine" -> endLine = reader.nextInt();
+                    default -> skipValue(reader);
+                }
+            }
+            reader.endObject();
+            members.add(new DuplicateMember(file, className, method, startLine, endLine));
+        }
+        reader.endArray();
+        return members;
+    }
+
     private static void writeScanDiagnostics(Writer out, ScanDiagnostics d) throws IOException {
         if (d == null) {
             return;
@@ -903,6 +1052,8 @@ final class StandaloneReportMarkdown {
         AnalysisReport.Summary summary;
         List<AnalysisReport.FileError> errors = List.of();
         ScanDiagnostics scanDiagnostics;
+        DuplicateStatistics duplicateStatistics;
+        List<DuplicateGroup> duplicateGroups = List.of();
         boolean headerWritten;
         boolean filesSectionSeen;
         AncestorIndex ancestors = new AncestorIndex();

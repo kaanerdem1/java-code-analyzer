@@ -102,7 +102,7 @@ final class SupplementalMetrics {
                 method.parameterCount(), method.godMethod(), method.riskScore(), method.riskLevel(),
                 method.riskFactors(), method.riskBreakdown(), halstead, exceptionSmells, codeSmells,
                 methodHash.isEmpty() ? legacy.methodHash() : methodHash, reuse || method.analysisReused(),
-                legacy.accessedFieldNames());
+                legacy.accessedFieldNames(), method.structuralHash());
     }
 
     /** {@link ClassMetric#name()} is often a simple/nested name; index keys are FQN. */

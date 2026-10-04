@@ -176,6 +176,8 @@ public final class Java6CodeAnalyzerMain {
                   --fail-on-risk=<LEVEL>   Exit 3 if any method or project risk >= LEVEL (LOW|MEDIUM|HIGH|CRITICAL)
                   --state=<file>      Incremental cache JSON (Stage-1 file hash + Stage-2 method hash)
                   --fresh             Ignore existing --state file (cold run, still writes state at end)
+                  --no-duplicates     Skip duplicate / near-duplicate detection (incl. PMD CPD pass)
+                  --min-duplicate-tokens=<n>  PMD CPD minimum token run (default 50)
                   --help              Show this help
                 """);
     }
@@ -207,6 +209,8 @@ public final class Java6CodeAnalyzerMain {
             RiskLevel failOnRisk = null;
             Path incrementalState = null;
             boolean freshIncremental = false;
+            boolean detectDuplicates = true;
+            int minDuplicateTokens = 0;
             boolean outputFlagSeen = false;
             boolean markdownFlagSeen = false;
 
@@ -255,6 +259,10 @@ public final class Java6CodeAnalyzerMain {
                     incrementalState = optionalPathArg(arg, "--state");
                 } else if (arg.equals("--fresh")) {
                     freshIncremental = true;
+                } else if (arg.equals("--no-duplicates")) {
+                    detectDuplicates = false;
+                } else if (arg.startsWith("--min-duplicate-tokens=")) {
+                    minDuplicateTokens = parsePositiveInt(value(arg), "--min-duplicate-tokens");
                 } else {
                     throw new IllegalArgumentException("Unknown argument: " + arg);
                 }
@@ -266,7 +274,7 @@ public final class Java6CodeAnalyzerMain {
             output = targets.json();
             markdown = targets.markdown();
             ScanOptions scanOptions = ScanOptionsParser.parse(includes, excludes, workers, progressEvery, detail,
-                    !noDefaultIgnores, incrementalState, freshIncremental);
+                    !noDefaultIgnores, incrementalState, freshIncremental, detectDuplicates, minDuplicateTokens);
             return new Options(path, output, markdown, top, charset, languageLevel, scanOptions, riskProfile,
                     riskConfig, maxFailureRatio, failOnRisk, compact, verbose, help);
         }

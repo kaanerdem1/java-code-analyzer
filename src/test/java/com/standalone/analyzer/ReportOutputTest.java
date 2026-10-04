@@ -22,7 +22,7 @@ class ReportOutputTest {
         Path root = Path.of("mock-modules").toAbsolutePath().normalize();
         var analyzer = new ProjectAnalyzer(StandardCharsets.UTF_8, 5, ParserConfiguration.LanguageLevel.JAVA_17,
                 new ScanOptions(1, 500, java.util.List.of(), java.util.List.of(), ScanOptions.ReportDetail.FULL, true,
-                        null, false));
+                        null, false, true, 50));
         AnalysisReport report = analyzer.analyze(root);
 
         StringWriter jsonOut = new StringWriter();
@@ -39,7 +39,7 @@ class ReportOutputTest {
         Path jsonFile = temp.resolve("report.json");
         var analyzer = new ProjectAnalyzer(StandardCharsets.UTF_8, 5, ParserConfiguration.LanguageLevel.JAVA_17,
                 new ScanOptions(1, 500, java.util.List.of(), java.util.List.of(), ScanOptions.ReportDetail.FULL, true,
-                        null, false));
+                        null, false, true, 50));
         AnalysisReport report = analyzer.analyze(root);
         try (var w = Files.newBufferedWriter(jsonFile, StandardCharsets.UTF_8)) {
             AnalysisReportJsonWriter.write(report, w, false);
@@ -53,5 +53,24 @@ class ReportOutputTest {
         assertTrue(markdown.contains("Metodlar (risk skoruna göre)"));
         assertTrue(markdown.contains("| DÜŞÜK |"));
         assertFalse(markdown.contains("En riskli metodlar"));
+        if (report.duplicateStatistics().exactGroups() + report.duplicateStatistics().nearMissGroups() > 0) {
+            assertTrue(markdown.contains("Tekrarlayan / benzer kod (duplicate)"),
+                    () -> "Markdown should include duplicate section when groups exist");
+            assertTrue(markdown.contains("Yakın benzer") || markdown.contains("Birebir yapı"));
+        }
+    }
+
+    @Test
+    void markdownDirectWriteIncludesDuplicateSectionWhenPresent() throws Exception {
+        Path root = Path.of("mock-modules").toAbsolutePath().normalize();
+        var analyzer = new ProjectAnalyzer(StandardCharsets.UTF_8, 5, ParserConfiguration.LanguageLevel.JAVA_17,
+                new ScanOptions(1, 500, java.util.List.of(), java.util.List.of(), ScanOptions.ReportDetail.FULL, true,
+                        null, false, true, 50));
+        AnalysisReport report = analyzer.analyze(root);
+        String md = StandaloneReportMarkdown.render(report);
+        if (report.duplicateStatistics().nearMissGroups() + report.duplicateStatistics().exactGroups() > 0) {
+            assertTrue(md.contains("## Tekrarlayan / benzer kod (duplicate)"));
+            assertTrue(md.contains("| Dosya | Sınıf | Metod | Satır |"));
+        }
     }
 }

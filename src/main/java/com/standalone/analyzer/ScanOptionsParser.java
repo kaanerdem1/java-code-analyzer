@@ -13,12 +13,15 @@ final class ScanOptionsParser {
     static ScanOptions parse(List<String> includeGlobs, List<String> excludeGlobs, int workers,
                              int progressEvery, ReportDetail reportDetail,
                              boolean applyDefaultIgnoredDirectories,
-                             java.nio.file.Path incrementalStateFile, boolean ignoreIncrementalCache) {
+                             java.nio.file.Path incrementalStateFile, boolean ignoreIncrementalCache,
+                             boolean detectDuplicates, int minDuplicateTokens) {
         ScanOptions defaults = ScanOptions.defaults();
         int resolvedWorkers = workers > 0 ? workers : defaults.workers();
         int resolvedProgress = progressEvery > 0 ? progressEvery : defaults.progressEvery();
+        int resolvedMinTokens = minDuplicateTokens > 0 ? minDuplicateTokens : defaults.minDuplicateTokens();
         return new ScanOptions(resolvedWorkers, resolvedProgress, includeGlobs, excludeGlobs, reportDetail,
-                applyDefaultIgnoredDirectories, incrementalStateFile, ignoreIncrementalCache);
+                applyDefaultIgnoredDirectories, incrementalStateFile, ignoreIncrementalCache,
+                detectDuplicates, resolvedMinTokens);
     }
 
     static ReportDetail parseDetail(String raw) {

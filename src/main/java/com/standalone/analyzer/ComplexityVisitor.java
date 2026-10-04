@@ -426,6 +426,7 @@ public class ComplexityVisitor extends VoidVisitorAdapter<Void> {
                 legacy.exceptionSmells(), legacy.codeSmells());
         MethodMetric previous = previousMethods.get(cacheKey);
         String methodHash = declaration != null ? HashService.normalizedMethodHash(declaration) : "";
+        String structuralHash = body != null ? HashService.structuralHash(body) : "";
         boolean reuse = previous != null && !methodHash.isEmpty() && methodHash.equals(previous.methodHash());
 
         Assessment risk;
@@ -448,7 +449,7 @@ public class ComplexityVisitor extends VoidVisitorAdapter<Void> {
                 context.emptyCatchBlocks, context.catchExceptionOrThrowable,
                 context.catchWithOnlyPrintStackTrace, primitiveObsession, maxBooleanOps,
                 context.maxDepth, parameterCount, god, risk.score(), risk.level(), risk.factors(),
-                risk.breakdown());
+                risk.breakdown(), structuralHash);
     }
 
     private SupplementalMetrics.LegacyMethodMetrics resolveLegacy(String typeName, String signature) {

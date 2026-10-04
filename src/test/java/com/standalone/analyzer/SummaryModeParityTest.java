@@ -17,10 +17,10 @@ class SummaryModeParityTest {
 
         ProjectAnalyzer fullAnalyzer = new ProjectAnalyzer(StandardCharsets.UTF_8, 20, level,
                 new ScanOptions(1, 500, java.util.List.of(), java.util.List.of(), ScanOptions.ReportDetail.FULL, true,
-                        null, false));
+                        null, false, true, 50));
         ProjectAnalyzer summaryAnalyzer = new ProjectAnalyzer(StandardCharsets.UTF_8, 20, level,
                 new ScanOptions(1, 500, java.util.List.of(), java.util.List.of(), ScanOptions.ReportDetail.SUMMARY, true,
-                        null, false));
+                        null, false, true, 50));
 
         AnalysisReport full = fullAnalyzer.analyze(root);
         AnalysisReport summary = summaryAnalyzer.analyze(root);

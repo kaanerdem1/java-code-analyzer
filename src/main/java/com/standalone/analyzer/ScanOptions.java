@@ -12,7 +12,9 @@ public record ScanOptions(
         ReportDetail reportDetail,
         boolean applyDefaultIgnoredDirectories,
         Path incrementalStateFile,
-        boolean ignoreIncrementalCache) {
+        boolean ignoreIncrementalCache,
+        boolean detectDuplicates,
+        int minDuplicateTokens) {
 
     public enum ReportDetail {
         /** Dosya → sınıf → metod tam ağaç (varsayılan). */
@@ -24,7 +26,7 @@ public record ScanOptions(
     public static ScanOptions defaults() {
         int cpus = Runtime.getRuntime().availableProcessors();
         int workers = Math.max(1, Math.min(cpus, cpus <= 4 ? cpus : cpus - 1));
-        return new ScanOptions(workers, 500, List.of(), List.of(), ReportDetail.FULL, true, null, false);
+        return new ScanOptions(workers, 500, List.of(), List.of(), ReportDetail.FULL, true, null, false, true, 50);
     }
 
     public ScanOptions {

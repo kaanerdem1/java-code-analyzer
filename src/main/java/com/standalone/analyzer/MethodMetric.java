@@ -46,7 +46,8 @@ public record MethodMetric(
         List<CodeSmell> codeSmells,
         String methodHash,
         boolean analysisReused,
-        List<String> accessedFieldNames) {
+        List<String> accessedFieldNames,
+        String structuralHash) {
 
     public MethodMetric {
         halstead = halstead == null ? HalsteadMetrics.EMPTY : halstead;
@@ -54,6 +55,7 @@ public record MethodMetric(
         codeSmells = codeSmells == null ? List.of() : List.copyOf(codeSmells);
         methodHash = methodHash == null ? "" : methodHash;
         accessedFieldNames = accessedFieldNames == null ? List.of() : List.copyOf(accessedFieldNames);
+        structuralHash = structuralHash == null ? "" : structuralHash;
     }
 
     /** Legacy smell/Halstead alanları boş; {@link SupplementalMetrics} doldurur. */
@@ -65,12 +67,13 @@ public record MethodMetric(
             int maxMethodCallChainLength, int emptyCatchBlocks, int catchExceptionOrThrowable,
             int catchWithOnlyPrintStackTrace, int primitiveObsessionIndex, int maxBooleanOperatorsInCondition,
             int maxNestingDepth, int parameterCount, boolean godMethod, double riskScore, RiskLevel riskLevel,
-            List<String> riskFactors, RiskBreakdown riskBreakdown) {
+            List<String> riskFactors, RiskBreakdown riskBreakdown, String structuralHash) {
         return new MethodMetric(name, kind, signature, startLine, endLine, cyclomaticComplexity, physicalLines,
                 codeLines, logicalStatements, cognitiveComplexity, exitPoints, catchClauses, switchCases,
                 outboundDistinctCalls, lambdaCount, maxTryNestingDepth, localVariableCount, maxMethodCallChainLength,
                 emptyCatchBlocks, catchExceptionOrThrowable, catchWithOnlyPrintStackTrace, primitiveObsessionIndex,
                 maxBooleanOperatorsInCondition, maxNestingDepth, parameterCount, godMethod, riskScore, riskLevel,
-                riskFactors, riskBreakdown, HalsteadMetrics.EMPTY, List.of(), List.of(), "", false, List.of());
+                riskFactors, riskBreakdown, HalsteadMetrics.EMPTY, List.of(), List.of(), "", false, List.of(),
+                structuralHash == null ? "" : structuralHash);
     }
 }

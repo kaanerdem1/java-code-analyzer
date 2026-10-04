@@ -16,10 +16,15 @@ public record AnalysisReport(
         List<FileError> errors,
         ScanDiagnostics scanDiagnostics,
         CacheStatistics cacheStatistics,
-        IncrementalChanges incrementalChanges) {
+        IncrementalChanges incrementalChanges,
+        DuplicateStatistics duplicateStatistics,
+        List<DuplicateGroup> duplicateGroups) {
 
     public AnalysisReport {
         incrementalChanges = incrementalChanges == null ? IncrementalChanges.empty() : incrementalChanges;
+        duplicateStatistics = duplicateStatistics == null
+                ? new DuplicateStatistics(0, 0, 0, 0) : duplicateStatistics;
+        duplicateGroups = duplicateGroups == null ? List.of() : List.copyOf(duplicateGroups);
     }
 
     /**
@@ -184,5 +189,23 @@ public record AnalysisReport(
         public FileError(String file, String message) {
             this(file, message, ScanErrorClassifier.classify(message));
         }
+    }
+
+    public record DuplicateGroup(
+            String groupId,
+            String similarityType,
+            int matchedTokenCount,
+            int duplicatedLines,
+            List<DuplicateMember> members) {
+    }
+
+    public record DuplicateMember(String file, String className, String method, int startLine, int endLine) {
+    }
+
+    public record DuplicateStatistics(
+            int exactGroups,
+            int methodsInExactGroups,
+            int nearMissGroups,
+            int methodsInNearMissGroups) {
     }
 }
