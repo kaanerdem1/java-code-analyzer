@@ -13,6 +13,7 @@ set "ROOT=%~dp0.."
 for %%I in ("%ROOT%") do set "ROOT=%%~fI"
 
 if not defined OUTPUT_DIR set "OUTPUT_DIR=%ROOT%\analysis-output"
+for %%I in ("%OUTPUT_DIR%") do set "OUTPUT_DIR=%%~fI"
 if not defined LANGUAGE_LEVEL set "LANGUAGE_LEVEL=JAVA_17"
 
 set "JAR=%ANALYZER_JAR%"
@@ -73,6 +74,8 @@ for /f "usebackq tokens=1,2 delims=|" %%a in (`powershell -NoProfile -ExecutionP
 
 if not defined JSON call :assign_paths_cmd_fallback
 if not defined MD call :assign_paths_cmd_fallback
+if "!JSON!"=="" call :assign_paths_cmd_fallback
+if "!MD!"=="" call :assign_paths_cmd_fallback
 
 :paths_ok
 if not defined JSON (
@@ -80,7 +83,15 @@ if not defined JSON (
   set "JSON=%OUTPUT_DIR%\standalone-fallback.json"
   set "MD=%OUTPUT_DIR%\parser-raporu-fallback.md"
 )
+if "!JSON!"=="" (
+  set "JSON=%OUTPUT_DIR%\standalone-fallback.json"
+  set "MD=%OUTPUT_DIR%\parser-raporu-fallback.md"
+)
 
+for %%I in ("%JSON%") do set "JSON=%%~fI"
+for %%I in ("%MD%") do set "MD=%%~fI"
+
+echo [STANDALONE] Output folder: %OUTPUT_DIR%
 for %%F in ("%MD%") do echo [STANDALONE] Report file: %%~nxF
 
 set "STATE_ARGS="
@@ -89,13 +100,35 @@ if not "%NO_STATE%"=="1" (
   if "%FRESH%"=="1" set "STATE_ARGS=!STATE_ARGS! --fresh"
 )
 
+pushd "%ROOT%"
 java -jar "%JAR%" --path="%SOURCE%" --output="%JSON%" --markdown="%MD%" --top=20 --language-level=%LANGUAGE_LEVEL% !STATE_ARGS!
-if errorlevel 1 exit /b 1
+set "JAVA_EXIT=!ERRORLEVEL!"
+popd
+if !JAVA_EXIT! neq 0 exit /b !JAVA_EXIT!
+
+if not exist "%MD%" (
+  echo [UYARI] Markdown burada yok: %MD%
+  set "ALT_MD=%SOURCE%\analysis-output\parser-raporu.md"
+  if exist "!ALT_MD!" (
+    echo [STANDALONE] Rapor taranan proje altinda: !ALT_MD!
+    echo        ^(Bazi CMD/PowerShell surumlerinde --output= bos gider; JAR --path altina yazar.^)
+  )
+)
+if not exist "%JSON%" (
+  echo [UYARI] JSON burada yok: %JSON%
+  set "ALT_JSON=%SOURCE%\analysis-output\standalone.json"
+  if exist "!ALT_JSON!" (
+    echo [STANDALONE] JSON taranan proje altinda: !ALT_JSON!
+  )
+)
 
 echo.
 echo Done.
 echo   Markdown: %MD%
 echo   JSON:     %JSON%
+if exist "%OUTPUT_DIR%" (
+  echo   Explorer klasoru: %OUTPUT_DIR%
+)
 endlocal
 exit /b 0
 

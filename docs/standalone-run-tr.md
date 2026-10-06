@@ -75,6 +75,13 @@ Eski JAR’larda CLI, `--output=` sonrasında **boş** yol görünce dururdu. G�
 
 Yine de hata görürsen: **JAR’ı yenile** (`mvn package` → `target/java-code-analyzer.jar` kopyala).
 
+### PowerShell’de görünüyor, Explorer’da `analysis-output` boş
+
+1. **İki farklı klasör:** Raporlar analyzer kökünde `…\java-code-analyzer\analysis-output\` olur; taranan proje içinde aramayın (veya tam tersi — kit hedef projede ise rapor **hedefte**).
+2. **`--output=` boş gitti:** Eski `run-analyze.cmd` bazen `%JSON%` / `%MD%` boş bırakırdı; JAR dosyayı **`--path` (taranan proje)\analysis-output\`** altına yazar, script başka yol yazar. Güncel script bunu düzeltir; yine de konsoldaki **`Output folder:`** ve **`Done.`** satırındaki **tam yolu** Explorer’da açın.
+3. **Zaman damgalı isim:** `parser-raporu.md` yok; `parser-etiket-20261006-143022.md` arayın veya `set FIXED_REPORT=1`.
+4. Terminalde gördüğünüz metin **konsol çıktısı** olabilir; dosya için `[STANDALONE] Report written to` / `Readable Markdown` satırındaki yolu `Test-Path` ile doğrulayın.
+
 Sık nedenler:
 
 - Elle `java -jar ... --output=` veya `--output` değeri unutulmuş
