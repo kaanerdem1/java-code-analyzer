@@ -15,6 +15,12 @@ for %%I in ("%ROOT%") do set "ROOT=%%~fI"
 if not defined OUTPUT_DIR set "OUTPUT_DIR=%ROOT%\analysis-output"
 for %%I in ("%OUTPUT_DIR%") do set "OUTPUT_DIR=%%~fI"
 if not defined LANGUAGE_LEVEL set "LANGUAGE_LEVEL=JAVA_17"
+REM Varsayilan: sabit dosya adlari (VS Code'da analysis-output\parser-raporu.md). Zaman damgasi: set TIMESTAMP_REPORT=1
+if "%TIMESTAMP_REPORT%"=="1" (
+  set "FIXED_REPORT=0"
+) else if not defined FIXED_REPORT (
+  set "FIXED_REPORT=1"
+)
 
 set "JAR=%ANALYZER_JAR%"
 if not defined JAR set "JAR=%ROOT%\target\java-code-analyzer.jar"
@@ -64,18 +70,7 @@ if "%FIXED_REPORT%"=="1" (
   goto :paths_ok
 )
 
-REM PowerShell: yollar ortam degiskeninden (tırnak/path kaçış hatası azalır)
-set "SOURCE_FULL=%SOURCE%"
-set "OUTPUT_DIR_FULL=%OUTPUT_DIR%"
-for /f "usebackq tokens=1,2 delims=|" %%a in (`powershell -NoProfile -ExecutionPolicy Bypass -Command "$src=$env:SOURCE_FULL; $out=$env:OUTPUT_DIR_FULL; $tag=$env:REPORT_TAG; if (-not $tag) { $tag=(Split-Path $src -Leaf) }; if ([string]::IsNullOrWhiteSpace($tag)) { $tag='scan' }; $tag=$tag.ToLower() -replace '[^a-z0-9._-]','-'; if ($tag.Length -gt 48) { $tag=$tag.Substring(0,48) }; $stamp=Get-Date -Format 'yyyyMMdd-HHmmss'; Write-Output ($out + '\standalone-' + $tag + '-' + $stamp + '.json|' + $out + '\parser-' + $tag + '-' + $stamp + '.md')"`) do (
-  set "JSON=%%a"
-  set "MD=%%b"
-)
-
-if not defined JSON call :assign_paths_cmd_fallback
-if not defined MD call :assign_paths_cmd_fallback
-if "!JSON!"=="" call :assign_paths_cmd_fallback
-if "!MD!"=="" call :assign_paths_cmd_fallback
+call :assign_paths_cmd_fallback
 
 :paths_ok
 if not defined JSON (
@@ -100,35 +95,41 @@ if not "%NO_STATE%"=="1" (
   if "%FRESH%"=="1" set "STATE_ARGS=!STATE_ARGS! --fresh"
 )
 
+set "STANDALONE_OUTPUT=%JSON%"
+set "STANDALONE_MARKDOWN=%MD%"
+echo [STANDALONE] JSON path: %JSON%
+echo [STANDALONE] MD path:   %MD%
+
 pushd "%ROOT%"
-java -jar "%JAR%" --path="%SOURCE%" --output="%JSON%" --markdown="%MD%" --top=20 --language-level=%LANGUAGE_LEVEL% !STATE_ARGS!
+java -jar "%JAR%" "--path=%SOURCE%" "--output=%JSON%" "--markdown=%MD%" --top=20 --language-level=%LANGUAGE_LEVEL% !STATE_ARGS!
 set "JAVA_EXIT=!ERRORLEVEL!"
 popd
 if !JAVA_EXIT! neq 0 exit /b !JAVA_EXIT!
 
-if not exist "%MD%" (
-  echo [UYARI] Markdown burada yok: %MD%
-  set "ALT_MD=%SOURCE%\analysis-output\parser-raporu.md"
-  if exist "!ALT_MD!" (
-    echo [STANDALONE] Rapor taranan proje altinda: !ALT_MD!
-    echo        ^(Bazi CMD/PowerShell surumlerinde --output= bos gider; JAR --path altina yazar.^)
+set "REPORT_OK=1"
+if not exist "%JSON%" set "REPORT_OK=0"
+if not exist "%MD%" set "REPORT_OK=0"
+
+if "!REPORT_OK!"=="0" (
+  echo.
+  echo [HATA] Rapor dosyasi olusturulamadi — script'in yazdigi yol:
+  echo   JSON:     %JSON%
+  echo   Markdown: %MD%
+  echo.
+  echo JSON terminale aktiysa --output Java'ya ulasmamis demektir. JAR/script guncel mi? ^(git pull, mvn package^)
+  if exist "%SOURCE%\analysis-output\standalone.json" (
+    echo [BILGI] Dosya taranan proje altinda: %SOURCE%\analysis-output\
   )
-)
-if not exist "%JSON%" (
-  echo [UYARI] JSON burada yok: %JSON%
-  set "ALT_JSON=%SOURCE%\analysis-output\standalone.json"
-  if exist "!ALT_JSON!" (
-    echo [STANDALONE] JSON taranan proje altinda: !ALT_JSON!
-  )
+  endlocal
+  exit /b 1
 )
 
 echo.
 echo Done.
 echo   Markdown: %MD%
 echo   JSON:     %JSON%
-if exist "%OUTPUT_DIR%" (
-  echo   Explorer klasoru: %OUTPUT_DIR%
-)
+echo   VS Code:  analysis-output klasorunu acin ^(%OUTPUT_DIR%^)
+dir /b "%JSON%" "%MD%" 2>nul
 endlocal
 exit /b 0
 

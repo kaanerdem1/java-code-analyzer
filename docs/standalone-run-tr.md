@@ -81,6 +81,7 @@ Yine de hata görürsen: **JAR’ı yenile** (`mvn package` → `target/java-cod
 2. **`--output=` boş gitti:** Eski `run-analyze.cmd` bazen `%JSON%` / `%MD%` boş bırakırdı; JAR dosyayı **`--path` (taranan proje)\analysis-output\`** altına yazar, script başka yol yazar. Güncel script bunu düzeltir; yine de konsoldaki **`Output folder:`** ve **`Done.`** satırındaki **tam yolu** Explorer’da açın.
 3. **Zaman damgalı isim:** `parser-raporu.md` yok; `parser-etiket-20261006-143022.md` arayın veya `set FIXED_REPORT=1`.
 4. Terminalde gördüğünüz metin **konsol çıktısı** olabilir; dosya için `[STANDALONE] Report written to` / `Readable Markdown` satırındaki yolu `Test-Path` ile doğrulayın.
+5. **JSON ekrana akıyorsa** `--output` Java’ya ulaşmamış demektir. Güncel `run-analyze.cmd` `STANDALONE_OUTPUT` / `STANDALONE_MARKDOWN` ortam değişkenlerini de set eder; tarama başında `[STANDALONE] JSON hedef:` satırına bakın. `stdout` yazıyorsa `git pull` + `mvn package` ile JAR/script yenileyin.
 
 Sık nedenler:
 

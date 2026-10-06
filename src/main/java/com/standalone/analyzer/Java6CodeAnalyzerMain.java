@@ -62,6 +62,7 @@ public final class Java6CodeAnalyzerMain {
                 System.err.println("[ERROR] Path does not exist or is not readable: " + options.path());
                 return 1;
             }
+            logResolvedOutputTargets(options);
 
             RiskCalculator riskCalculator =
                     RiskProfileResolver.create(options.riskProfile(), options.riskConfig());
@@ -126,7 +127,25 @@ public final class Java6CodeAnalyzerMain {
                 StandaloneReportMarkdown.write(report, w);
             }
         }
-        System.err.println("[STANDALONE] Readable Markdown: " + options.markdown().toAbsolutePath().normalize());
+        Path mdPath = options.markdown().toAbsolutePath().normalize();
+        if (!Files.isRegularFile(mdPath)) {
+            throw new IOException("Markdown file was not created: " + mdPath);
+        }
+        System.err.println("[STANDALONE] Readable Markdown: " + mdPath);
+    }
+
+    private static void logResolvedOutputTargets(Options options) {
+        if (options.output() == null) {
+            System.err.println("[STANDALONE] JSON cikti: stdout (dosya yok). Windows CMD'de --output= "
+                    + "bos kalirsa veya STANDALONE_OUTPUT set edilmezse JSON terminale akar.");
+        } else {
+            System.err.println("[STANDALONE] JSON hedef: " + options.output().toAbsolutePath().normalize());
+        }
+        if (options.markdown() == null) {
+            System.err.println("[STANDALONE] Markdown: yazilmayacak");
+        } else {
+            System.err.println("[STANDALONE] Markdown hedef: " + options.markdown().toAbsolutePath().normalize());
+        }
     }
 
     private static void writeJson(AnalysisReport report, Options options) throws IOException {
@@ -138,7 +157,11 @@ public final class Java6CodeAnalyzerMain {
             try (Writer w = Files.newBufferedWriter(options.output(), StandardCharsets.UTF_8)) {
                 AnalysisReportJsonWriter.write(report, w, options.compact());
             }
-            System.err.println("[STANDALONE] Report written to " + options.output().toAbsolutePath());
+            Path written = options.output().toAbsolutePath().normalize();
+            if (!Files.isRegularFile(written)) {
+                throw new IOException("JSON file was not created: " + written);
+            }
+            System.err.println("[STANDALONE] Report written to " + written);
         } else {
             Writer w = new BufferedWriter(new OutputStreamWriter(
                     new FileOutputStream(FileDescriptor.out), StandardCharsets.UTF_8));
@@ -271,8 +294,9 @@ public final class Java6CodeAnalyzerMain {
                 throw new IllegalArgumentException("Missing required argument --path=<dir>");
             }
             OutputTargets targets = coalesceOutputPaths(path, output, markdown, outputFlagSeen, markdownFlagSeen);
-            output = targets.json();
-            markdown = targets.markdown();
+            OutputTargets envTargets = applyEnvironmentOutputPaths(targets.json(), targets.markdown());
+            output = envTargets.json();
+            markdown = envTargets.markdown();
             ScanOptions scanOptions = ScanOptionsParser.parse(includes, excludes, workers, progressEvery, detail,
                     !noDefaultIgnores, incrementalState, freshIncremental, detectDuplicates, minDuplicateTokens);
             return new Options(path, output, markdown, top, charset, languageLevel, scanOptions, riskProfile,
@@ -311,6 +335,21 @@ public final class Java6CodeAnalyzerMain {
         }
 
         private record OutputTargets(Path json, Path markdown) {
+        }
+
+        /** Windows {@code run-analyze.cmd} sets these when CMD quoting drops {@code --output=}. */
+        private static OutputTargets applyEnvironmentOutputPaths(Path output, Path markdown) {
+            String envJson = System.getenv("STANDALONE_OUTPUT");
+            String envMd = System.getenv("STANDALONE_MARKDOWN");
+            Path out = output;
+            Path md = markdown;
+            if (envJson != null && !envJson.isBlank()) {
+                out = Paths.get(envJson.trim());
+            }
+            if (envMd != null && !envMd.isBlank()) {
+                md = Paths.get(envMd.trim());
+            }
+            return new OutputTargets(out, md);
         }
 
         /**

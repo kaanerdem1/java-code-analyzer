@@ -63,6 +63,9 @@ if [[ "${NO_STATE:-0}" != "1" ]]; then
   if [[ "${FRESH:-0}" == "1" ]]; then STATE_ARGS+=(--fresh); fi
 fi
 
+export STANDALONE_OUTPUT="${JSON}"
+export STANDALONE_MARKDOWN="${MD}"
+
 java -jar "${JAR}" \
   --path="${SOURCE}" \
   --output="${JSON}" \
@@ -71,6 +74,13 @@ java -jar "${JAR}" \
   "${RISK_ARGS[@]}" \
   "${STATE_ARGS[@]}" \
   "${EXTRA[@]}"
+
+if [[ ! -f "${JSON}" || ! -f "${MD}" ]]; then
+  echo "[HATA] Rapor dosyasi olusturulamadi:" >&2
+  echo "  JSON:     ${JSON}" >&2
+  echo "  Markdown: ${MD}" >&2
+  exit 1
+fi
 
 echo ""
 echo "Done."
