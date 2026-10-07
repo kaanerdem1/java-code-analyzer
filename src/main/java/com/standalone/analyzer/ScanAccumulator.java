@@ -37,6 +37,9 @@ final class ScanAccumulator {
         for (ClassMetric type : classes) {
             for (MethodMetric method : type.methods()) {
                 summaryStats.addMethod(moduleRoot, method);
+                if (MethodAccessorFilter.isSimpleGetterOrSetter(method)) {
+                    continue;
+                }
                 offerHotspot(new RiskHotspot(
                         relativePath, packageName, type.name(), method.signature(), method.startLine(),
                         method.riskScore(), method.riskLevel(), method.cyclomaticComplexity(),

@@ -38,7 +38,9 @@ Metod gövdesinin bir **klonunu** alır (orijinal AST'ye dokunmaz), şunları ya
   (mevcut `normalizedMethodHash` ile aynı temizleme regex'leri kullanılıyor).
 
 Sonuç: değişken adları ve sabit değerler farklı olsa bile **aynı mantığa sahip iki metod aynı
-hash'i üretir**. **EXACT_STRUCTURE** gruplarında ek olarak **aynı metod imzası** (`signature`, parametre tipleri) şarttır; farklı girdi/çıktı imzalı metodlar artık yapısal grupta birleşmez.
+hash'i üretir**. **EXACT_STRUCTURE** gruplarında ek olarak **dönüş tipi + metod imzası** (`returnType` + `name(paramTypes…)`) şarttır; farklı girdi/çıktı imzalı metodlar yapısal grupta birleşmez.
+
+**PMD CPD (NEAR_MISS):** Varsayılan olarak **her zaman** çalışır (dosya sayısına göre sessiz atlama yok). `--no-near-duplicates` yalnızca CPD'yi kapatır. İsteğe bağlı performans: `--near-duplicate-auto-skip-files=N` (N&gt;0) ile büyük repoda CPD atlama **opt-in**.
 
 **EXACT_TEXT** (ayrı pass): `normalizedBodyHash` — gövde metni birebir (literal ve isimler dahil, yalnızca yorum/boşluk normalize). Gerçek kopyala-yapıştır için en kesin katman.
 

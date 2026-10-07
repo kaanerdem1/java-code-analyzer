@@ -14,6 +14,8 @@ public record MethodMetric(
         String name,
         String kind,
         String signature,
+        /** Return type label for methods; empty for constructors and similar. */
+        String returnType,
         int startLine,
         int endLine,
         int cyclomaticComplexity,
@@ -58,11 +60,20 @@ public record MethodMetric(
         accessedFieldNames = accessedFieldNames == null ? List.of() : List.copyOf(accessedFieldNames);
         bodyHash = bodyHash == null ? "" : bodyHash;
         structuralHash = structuralHash == null ? "" : structuralHash;
+        returnType = returnType == null ? "" : returnType;
+    }
+
+    /** EXACT_STRUCTURE duplicate gruplama: dönüş tipi + imza (parametre tipleri). */
+    String structureDuplicateSignature() {
+        if (returnType.isEmpty()) {
+            return signature;
+        }
+        return returnType + " " + signature;
     }
 
     /** Legacy smell/Halstead alanları boş; {@link SupplementalMetrics} doldurur. */
     static MethodMetric withoutLegacyExtensions(
-            String name, String kind, String signature, int startLine, int endLine,
+            String name, String kind, String signature, String returnType, int startLine, int endLine,
             int cyclomaticComplexity, int physicalLines, int codeLines, int logicalStatements,
             int cognitiveComplexity, int exitPoints, int catchClauses, int switchCases,
             int outboundDistinctCalls, int lambdaCount, int maxTryNestingDepth, int localVariableCount,
@@ -70,7 +81,7 @@ public record MethodMetric(
             int catchWithOnlyPrintStackTrace, int primitiveObsessionIndex, int maxBooleanOperatorsInCondition,
             int maxNestingDepth, int parameterCount, boolean godMethod, double riskScore, RiskLevel riskLevel,
             List<String> riskFactors, RiskBreakdown riskBreakdown, String bodyHash, String structuralHash) {
-        return new MethodMetric(name, kind, signature, startLine, endLine, cyclomaticComplexity, physicalLines,
+        return new MethodMetric(name, kind, signature, returnType, startLine, endLine, cyclomaticComplexity, physicalLines,
                 codeLines, logicalStatements, cognitiveComplexity, exitPoints, catchClauses, switchCases,
                 outboundDistinctCalls, lambdaCount, maxTryNestingDepth, localVariableCount, maxMethodCallChainLength,
                 emptyCatchBlocks, catchExceptionOrThrowable, catchWithOnlyPrintStackTrace, primitiveObsessionIndex,

@@ -19,7 +19,7 @@ class IncrementalCacheTest {
         Path root = Path.of("mock-modules").toAbsolutePath().normalize();
         Path state = temp.resolve("analyzer-state.json");
         ScanOptions options = new ScanOptions(1, 500, java.util.List.of(), java.util.List.of(),
-                ScanOptions.ReportDetail.FULL, true, state, false, true, 50);
+                ScanOptions.ReportDetail.FULL, true, state, false, true, 50, true, 0, false);
         ProjectAnalyzer analyzer = new ProjectAnalyzer(StandardCharsets.UTF_8, 5,
                 ParserConfiguration.LanguageLevel.JAVA_17, options, new RiskCalculator());
 

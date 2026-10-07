@@ -202,7 +202,10 @@ public final class Java6CodeAnalyzerMain {
                   --state=<file>      Incremental cache JSON (Stage-1 file hash + Stage-2 method hash)
                   --fresh             Ignore existing --state file (cold run, still writes state at end)
                   --no-duplicates     Skip duplicate / near-duplicate detection (incl. PMD CPD pass)
+                  --no-near-duplicates  Skip PMD CPD only (EXACT_TEXT / EXACT_STRUCTURE still run)
                   --min-duplicate-tokens=<n>  PMD CPD minimum token run (default 50)
+                  --near-duplicate-auto-skip-files=<n>  Opt-in: skip CPD when parsed files >= n (default 0=never)
+                  --force-near-duplicates  Reserved; CPD runs by default unless --no-near-duplicates or opt-in skip
                   --help              Show this help
                 """);
     }
@@ -236,6 +239,9 @@ public final class Java6CodeAnalyzerMain {
             boolean freshIncremental = false;
             boolean detectDuplicates = true;
             int minDuplicateTokens = 0;
+            boolean detectNearMissDuplicates = true;
+            int nearDuplicateAutoSkipMinFiles = -1;
+            boolean forceNearMissDuplicates = false;
             boolean outputFlagSeen = false;
             boolean markdownFlagSeen = false;
 
@@ -286,8 +292,15 @@ public final class Java6CodeAnalyzerMain {
                     freshIncremental = true;
                 } else if (arg.equals("--no-duplicates")) {
                     detectDuplicates = false;
+                } else if (arg.equals("--no-near-duplicates")) {
+                    detectNearMissDuplicates = false;
                 } else if (arg.startsWith("--min-duplicate-tokens=")) {
                     minDuplicateTokens = parsePositiveInt(value(arg), "--min-duplicate-tokens");
+                } else if (arg.startsWith("--near-duplicate-auto-skip-files=")) {
+                    nearDuplicateAutoSkipMinFiles = parsePositiveInt(value(arg),
+                            "--near-duplicate-auto-skip-files");
+                } else if (arg.equals("--force-near-duplicates")) {
+                    forceNearMissDuplicates = true;
                 } else {
                     throw new IllegalArgumentException("Unknown argument: " + arg);
                 }
@@ -300,7 +313,8 @@ public final class Java6CodeAnalyzerMain {
             output = envTargets.json();
             markdown = envTargets.markdown();
             ScanOptions scanOptions = ScanOptions.fromCli(includes, excludes, workers, progressEvery, detail,
-                    !noDefaultIgnores, incrementalState, freshIncremental, detectDuplicates, minDuplicateTokens);
+                    !noDefaultIgnores, incrementalState, freshIncremental, detectDuplicates, minDuplicateTokens,
+                    detectNearMissDuplicates, nearDuplicateAutoSkipMinFiles, forceNearMissDuplicates);
             return new Options(path, output, markdown, top, charset, languageLevel, scanOptions, riskProfile,
                     riskConfig, maxFailureRatio, failOnRisk, compact, verbose, help);
         }

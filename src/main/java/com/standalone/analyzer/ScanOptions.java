@@ -16,7 +16,15 @@ public record ScanOptions(
         Path incrementalStateFile,
         boolean ignoreIncrementalCache,
         boolean detectDuplicates,
-        int minDuplicateTokens) {
+        int minDuplicateTokens,
+        /** PMD CPD near-miss pass; exact duplicate passes unaffected unless {@code detectDuplicates} is false. */
+        boolean detectNearMissDuplicates,
+        /** When &gt; 0 and parsed file count &gt;= this, skip CPD unless {@link #forceNearMissDuplicates}. */
+        int nearDuplicateAutoSkipMinFiles,
+        boolean forceNearMissDuplicates) {
+
+    /** 0 = CPD her zaman çalışır; yalnızca {@code --near-duplicate-auto-skip-files=N} (N&gt;0) ile opt-in atlama. */
+    public static final int DEFAULT_NEAR_DUPLICATE_AUTO_SKIP_MIN_FILES = 0;
 
     public enum ReportDetail {
         /** Dosya → sınıf → metod tam ağaç (varsayılan). */
@@ -28,7 +36,8 @@ public record ScanOptions(
     public static ScanOptions defaults() {
         int cpus = Runtime.getRuntime().availableProcessors();
         int workers = Math.max(1, Math.min(cpus, cpus <= 4 ? cpus : cpus - 1));
-        return new ScanOptions(workers, 500, List.of(), List.of(), ReportDetail.FULL, true, null, false, true, 50);
+        return new ScanOptions(workers, 500, List.of(), List.of(), ReportDetail.FULL, true, null, false, true, 50,
+                true, DEFAULT_NEAR_DUPLICATE_AUTO_SKIP_MIN_FILES, false);
     }
 
     public ScanOptions {
@@ -45,14 +54,20 @@ public record ScanOptions(
     static ScanOptions fromCli(List<String> includeGlobs, List<String> excludeGlobs, int workers,
                                int progressEvery, ReportDetail reportDetail,
                                boolean applyDefaultIgnoredDirectories, Path incrementalStateFile,
-                               boolean ignoreIncrementalCache, boolean detectDuplicates, int minDuplicateTokens) {
+                               boolean ignoreIncrementalCache, boolean detectDuplicates, int minDuplicateTokens,
+                               boolean detectNearMissDuplicates, int nearDuplicateAutoSkipMinFiles,
+                               boolean forceNearMissDuplicates) {
         ScanOptions defaults = defaults();
         int resolvedWorkers = workers > 0 ? workers : defaults.workers();
         int resolvedProgress = progressEvery > 0 ? progressEvery : defaults.progressEvery();
         int resolvedMinTokens = minDuplicateTokens > 0 ? minDuplicateTokens : defaults.minDuplicateTokens();
+        int resolvedAutoSkip = nearDuplicateAutoSkipMinFiles >= 0
+                ? nearDuplicateAutoSkipMinFiles
+                : defaults.nearDuplicateAutoSkipMinFiles();
         return new ScanOptions(resolvedWorkers, resolvedProgress, includeGlobs, excludeGlobs, reportDetail,
                 applyDefaultIgnoredDirectories, incrementalStateFile, ignoreIncrementalCache,
-                detectDuplicates, resolvedMinTokens);
+                detectDuplicates, resolvedMinTokens, detectNearMissDuplicates, resolvedAutoSkip,
+                forceNearMissDuplicates);
     }
 
     static ReportDetail parseDetail(String raw) {

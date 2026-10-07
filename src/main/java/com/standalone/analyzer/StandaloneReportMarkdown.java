@@ -266,11 +266,16 @@ final class StandaloneReportMarkdown {
     private static void writeMethodTableFromMetrics(Writer out, ModuleRootIndex moduleRoots,
                                                     List<FileMetric> files, AncestorIndex ancestors)
             throws IOException {
-        List<MethodRow> rows = collectAllMethodRows(moduleRoots, files, ancestors);
+        MethodTableCollectResult collected = collectAllMethodRows(moduleRoots, files, ancestors);
+        List<MethodRow> rows = collected.rows();
         rows.sort(Comparator.comparingDouble(MethodRow::score).reversed());
         writeMethodTableIntro(out, rows.isEmpty());
         for (MethodRow r : rows) {
             writeMethodRow(out, r);
+        }
+        if (collected.excludedSimpleAccessors() > 0) {
+            out.write("\n*Basit getter/setter/is-accessor metodları tabloda gösterilmez: "
+                    + collected.excludedSimpleAccessors() + " (JSON `--detail=full` içinde durur).*\n");
         }
         if (!rows.isEmpty()) {
             out.write("\n† FOUT: katalog metriği; risk skoruna dahil değil.\n\n");
@@ -296,15 +301,23 @@ final class StandaloneReportMarkdown {
                 + (r.god() ? "evet" : "hayır") + " |\n");
     }
 
-    private static List<MethodRow> collectAllMethodRows(ModuleRootIndex moduleRoots, List<FileMetric> files,
-                                                        AncestorIndex ancestors) {
+    private record MethodTableCollectResult(List<MethodRow> rows, int excludedSimpleAccessors) {
+    }
+
+    private static MethodTableCollectResult collectAllMethodRows(ModuleRootIndex moduleRoots, List<FileMetric> files,
+                                                                 AncestorIndex ancestors) {
         List<MethodRow> rows = new ArrayList<>();
+        int excludedAccessors = 0;
         for (FileMetric file : files) {
             if (file.classes().isEmpty()) {
                 continue;
             }
             for (ClassMetric type : file.classes()) {
                 for (MethodMetric m : type.methods()) {
+                    if (MethodAccessorFilter.isSimpleGetterOrSetter(m)) {
+                        excludedAccessors++;
+                        continue;
+                    }
                     String chain = MethodHierarchy.breadcrumb(MethodHierarchy.ancestorPath(
                             moduleRoots, file.path(), file.packageName(), type.name(), m.signature()));
                     String tableLabel = MethodHierarchy.tableMethodLabel(type.name(), m.signature());
@@ -318,16 +331,17 @@ final class StandaloneReportMarkdown {
                 }
             }
         }
-        return rows;
+        return new MethodTableCollectResult(rows, excludedAccessors);
     }
 
     private static void streamMethodTableFromFilesJson(JsonReader reader, Writer out,
                                                        ModuleRootIndex moduleRoots, AncestorIndex ancestors)
             throws IOException {
         List<MethodRow> rows = new ArrayList<>();
+        int excludedAccessors = 0;
         reader.beginArray();
         while (reader.hasNext()) {
-            readFileMetricsJson(reader, rows, moduleRoots, ancestors);
+            excludedAccessors += readFileMetricsJson(reader, rows, moduleRoots, ancestors);
         }
         reader.endArray();
         rows.sort(Comparator.comparingDouble(MethodRow::score).reversed());
@@ -335,31 +349,39 @@ final class StandaloneReportMarkdown {
         for (MethodRow r : rows) {
             writeMethodRow(out, r);
         }
+        if (excludedAccessors > 0) {
+            out.write("\n*Basit getter/setter/is-accessor metodları tabloda gösterilmez: "
+                    + excludedAccessors + " (JSON `--detail=full` içinde durur).*\n");
+        }
         if (!rows.isEmpty()) {
             out.write("\n† FOUT: katalog metriği; risk skoruna dahil değil.\n\n");
         }
     }
 
-    private static void readFileMetricsJson(JsonReader reader, List<MethodRow> rows,
-                                            ModuleRootIndex moduleRoots, AncestorIndex ancestors)
+    private static int readFileMetricsJson(JsonReader reader, List<MethodRow> rows,
+                                           ModuleRootIndex moduleRoots, AncestorIndex ancestors)
             throws IOException {
         String path = "";
         String packageName = "";
+        int excludedAccessors = 0;
         reader.beginObject();
         while (reader.hasNext()) {
             switch (reader.nextName()) {
                 case "path" -> path = reader.nextString();
                 case "packageName" -> packageName = reader.nextString();
-                case "classes" -> readClassesJson(reader, path, packageName, rows, moduleRoots, ancestors);
+                case "classes" -> excludedAccessors += readClassesJson(reader, path, packageName, rows, moduleRoots,
+                        ancestors);
                 default -> skipValue(reader);
             }
         }
         reader.endObject();
+        return excludedAccessors;
     }
 
-    private static void readClassesJson(JsonReader reader, String path, String packageName,
-                                        List<MethodRow> rows, ModuleRootIndex moduleRoots,
-                                        AncestorIndex ancestors) throws IOException {
+    private static int readClassesJson(JsonReader reader, String path, String packageName,
+                                       List<MethodRow> rows, ModuleRootIndex moduleRoots,
+                                       AncestorIndex ancestors) throws IOException {
+        int excludedAccessors = 0;
         reader.beginArray();
         while (reader.hasNext()) {
             String className = "";
@@ -367,22 +389,28 @@ final class StandaloneReportMarkdown {
             while (reader.hasNext()) {
                 switch (reader.nextName()) {
                     case "name" -> className = reader.nextString();
-                    case "methods" -> readMethodsJson(reader, path, packageName, className, rows, moduleRoots,
-                            ancestors);
+                    case "methods" -> excludedAccessors += readMethodsJson(reader, path, packageName, className, rows,
+                            moduleRoots, ancestors);
                     default -> skipValue(reader);
                 }
             }
             reader.endObject();
         }
         reader.endArray();
+        return excludedAccessors;
     }
 
-    private static void readMethodsJson(JsonReader reader, String path, String packageName, String className,
-                                        List<MethodRow> rows, ModuleRootIndex moduleRoots,
-                                        AncestorIndex ancestors) throws IOException {
+    private static int readMethodsJson(JsonReader reader, String path, String packageName, String className,
+                                       List<MethodRow> rows, ModuleRootIndex moduleRoots,
+                                       AncestorIndex ancestors) throws IOException {
         reader.beginArray();
+        int excludedAccessors = 0;
         while (reader.hasNext()) {
             MethodJson m = readMethodJson(reader);
+            if (m.isSimpleAccessor()) {
+                excludedAccessors++;
+                continue;
+            }
             String chain = MethodHierarchy.breadcrumb(MethodHierarchy.ancestorPath(
                     moduleRoots, path, packageName, className, m.signature));
             String tableLabel = MethodHierarchy.tableMethodLabel(className, m.signature);
@@ -393,6 +421,7 @@ final class StandaloneReportMarkdown {
                     m.foutCount, driver, m.god, m.breakdown));
         }
         reader.endArray();
+        return excludedAccessors;
     }
 
     private static MethodJson readMethodJson(JsonReader reader) throws IOException {
@@ -400,6 +429,8 @@ final class StandaloneReportMarkdown {
         reader.beginObject();
         while (reader.hasNext()) {
             switch (reader.nextName()) {
+                case "name" -> m.name = reader.nextString();
+                case "kind" -> m.kind = reader.nextString();
                 case "signature" -> m.signature = reader.nextString();
                 case "cyclomaticComplexity" -> m.cc = reader.nextInt();
                 case "codeLines" -> m.loc = reader.nextInt();
@@ -1019,6 +1050,8 @@ final class StandaloneReportMarkdown {
     }
 
     private static final class MethodJson {
+        String name = "";
+        String kind = "";
         String signature = "";
         double score;
         RiskLevel level = RiskLevel.LOW;
@@ -1060,6 +1093,11 @@ final class StandaloneReportMarkdown {
                     catchWithOnlyPrintStackTrace, primitiveObsessionIndex, maxBooleanOperatorsInCondition,
                     halsteadDifficultyRounded, halsteadEffortRounded, rawTypeUsage, stringConcatInLoop,
                     hardcodedLiteralCount, swallowedExceptionSmells, genericExceptionSmells);
+        }
+
+        boolean isSimpleAccessor() {
+            return MethodAccessorFilter.isSimpleGetterOrSetter(kind, name, parameterCount, cc, loc, logicalStatements,
+                    foutCount, catchClauses);
         }
     }
 

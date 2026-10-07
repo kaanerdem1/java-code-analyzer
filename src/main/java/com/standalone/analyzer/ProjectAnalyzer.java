@@ -205,14 +205,31 @@ public final class ProjectAnalyzer {
         }
         List<DuplicateGroup> groups = new ArrayList<>();
         groups.addAll(duplicateDetectionEngine.detectExactDuplicates(files));
-        try {
-            groups.addAll(duplicateDetectionEngine.detectNearMissDuplicates(
-                    absoluteRoot, scanOptions.minDuplicateTokens(), files));
-        } catch (RuntimeException e) {
-            System.err.println("[STANDALONE] Near-miss duplicate detection (PMD CPD) failed, "
-                    + "continuing with exact-duplicate results only: " + e);
+        if (shouldRunNearMissDuplicatePass(files.size())) {
+            try {
+                groups.addAll(duplicateDetectionEngine.detectNearMissDuplicates(
+                        absoluteRoot, scanOptions.minDuplicateTokens(), files));
+            } catch (RuntimeException e) {
+                System.err.println("[STANDALONE] Near-miss duplicate detection (PMD CPD) failed, "
+                        + "continuing with exact-duplicate results only: " + e);
+            }
         }
         return groups;
+    }
+
+    private boolean shouldRunNearMissDuplicatePass(int parsedFileCount) {
+        if (!scanOptions.detectNearMissDuplicates()) {
+            return false;
+        }
+        int threshold = scanOptions.nearDuplicateAutoSkipMinFiles();
+        if (threshold > 0 && parsedFileCount >= threshold && !scanOptions.forceNearMissDuplicates()) {
+            System.err.println("[STANDALONE] Near-miss duplicate (PMD CPD) skipped: "
+                    + parsedFileCount + " files >= threshold " + threshold
+                    + " (EXACT_TEXT/EXACT_STRUCTURE still run; use --force-near-duplicates or "
+                    + "--near-duplicate-auto-skip-files=0 to change).");
+            return false;
+        }
+        return true;
     }
 
     private static DuplicateStatistics summariseDuplicates(List<DuplicateGroup> groups) {
@@ -664,6 +681,9 @@ public final class ProjectAnalyzer {
         for (FileMetric file : files) {
             for (ClassMetric type : file.classes()) {
                 for (MethodMetric m : type.methods()) {
+                    if (MethodAccessorFilter.isSimpleGetterOrSetter(m)) {
+                        continue;
+                    }
                     hotspots.add(new RiskHotspot(file.path(), file.packageName(), type.name(), m.signature(),
                             m.startLine(), m.riskScore(), m.riskLevel(), m.cyclomaticComplexity(), m.codeLines(),
                             m.maxNestingDepth(), m.parameterCount(), m.cognitiveComplexity(),

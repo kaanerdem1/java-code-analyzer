@@ -92,7 +92,8 @@ final class SupplementalMetrics {
             codeSmells = legacy.codeSmells();
         }
 
-        return new MethodMetric(method.name(), method.kind(), method.signature(), method.startLine(), method.endLine(),
+        return new MethodMetric(method.name(), method.kind(), method.signature(), method.returnType(),
+                method.startLine(), method.endLine(),
                 method.cyclomaticComplexity(), method.physicalLines(), method.codeLines(), method.logicalStatements(),
                 method.cognitiveComplexity(), method.exitPoints(), method.catchClauses(), method.switchCases(),
                 method.outboundDistinctCalls(), method.lambdaCount(), method.maxTryNestingDepth(),

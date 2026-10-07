@@ -47,7 +47,7 @@ final class DuplicateDetectionEngine {
                     if (structural == null || structural.isEmpty()) {
                         continue;
                     }
-                    String key = structural + "\0" + method.signature();
+                    String key = structural + "\0" + method.structureDuplicateSignature();
                     byHash.computeIfAbsent(key, k -> new ArrayList<>())
                             .add(new DuplicateMember(file.path(), type.name(), method.signature(),
                                     method.startLine(), method.endLine()));

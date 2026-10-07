@@ -22,7 +22,7 @@ class ReportOutputTest {
         Path root = Path.of("mock-modules").toAbsolutePath().normalize();
         var analyzer = new ProjectAnalyzer(StandardCharsets.UTF_8, 5, ParserConfiguration.LanguageLevel.JAVA_17,
                 new ScanOptions(1, 500, java.util.List.of(), java.util.List.of(), ScanOptions.ReportDetail.FULL, true,
-                        null, false, true, 50));
+                        null, false, true, 50, true, 0, false));
         AnalysisReport report = analyzer.analyze(root);
 
         StringWriter jsonOut = new StringWriter();
@@ -39,7 +39,7 @@ class ReportOutputTest {
         Path jsonFile = temp.resolve("report.json");
         var analyzer = new ProjectAnalyzer(StandardCharsets.UTF_8, 5, ParserConfiguration.LanguageLevel.JAVA_17,
                 new ScanOptions(1, 500, java.util.List.of(), java.util.List.of(), ScanOptions.ReportDetail.FULL, true,
-                        null, false, true, 50));
+                        null, false, true, 50, true, 0, false));
         AnalysisReport report = analyzer.analyze(root);
         try (var w = Files.newBufferedWriter(jsonFile, StandardCharsets.UTF_8)) {
             AnalysisReportJsonWriter.write(report, w, false);
@@ -65,7 +65,7 @@ class ReportOutputTest {
         Path root = Path.of("mock-modules").toAbsolutePath().normalize();
         var analyzer = new ProjectAnalyzer(StandardCharsets.UTF_8, 5, ParserConfiguration.LanguageLevel.JAVA_17,
                 new ScanOptions(1, 500, java.util.List.of(), java.util.List.of(), ScanOptions.ReportDetail.FULL, true,
-                        null, false, true, 50));
+                        null, false, true, 50, true, 0, false));
         AnalysisReport report = analyzer.analyze(root);
         String md = StandaloneReportMarkdown.render(report);
         if (report.duplicateStatistics().nearMissGroups() + report.duplicateStatistics().exactGroups() > 0) {

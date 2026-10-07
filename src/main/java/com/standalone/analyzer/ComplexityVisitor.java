@@ -163,7 +163,7 @@ public class ComplexityVisitor extends VoidVisitorAdapter<Void> {
         int loc = countCodeLines(start, end);
         String name = n.isStatic() ? "<static-init>" : "<instance-init>";
         String kind = n.isStatic() ? "STATIC_INITIALIZER" : "INSTANCE_INITIALIZER";
-        owner.methods.add(buildMethodMetric(name, kind, name + "()", start, end, body, 0, context, owner));
+        owner.methods.add(buildMethodMetric(name, kind, name + "()", "", start, end, body, 0, context, owner));
     }
 
     private void analyseType(TypeDeclaration<?> declaration, String kind, boolean anonymous, Runnable descend) {
@@ -255,7 +255,7 @@ public class ComplexityVisitor extends VoidVisitorAdapter<Void> {
         int end = endLine(n);
         int loc = countCodeLines(start, end);
         String name = n.getNameAsString();
-        owner.methods.add(buildMethodMetric(name, "COMPACT_CONSTRUCTOR", name + "()", start, end,
+        owner.methods.add(buildMethodMetric(name, "COMPACT_CONSTRUCTOR", name + "()", "", start, end,
                 n.getBody(), 0, context, owner));
     }
 
@@ -326,7 +326,7 @@ public class ComplexityVisitor extends VoidVisitorAdapter<Void> {
                 .map(VariableDeclarator::getNameAsString)
                 .orElse("<field-lambda>");
         String signature = fieldName + "=<lambda> @" + start;
-        owner.methods.add(buildMethodMetric(null, fieldName, "FIELD_LAMBDA", signature, start, end,
+        owner.methods.add(buildMethodMetric(null, fieldName, "FIELD_LAMBDA", signature, "", start, end,
                 null, 0, context, owner, lambda.getBody()));
     }
 
@@ -385,26 +385,29 @@ public class ComplexityVisitor extends VoidVisitorAdapter<Void> {
         if (owner.anonymous) {
             signature = signature + " @" + start;
         }
-        owner.methods.add(buildMethodMetric(declaration, declaration.getNameAsString(), kind, signature, start, end,
-                body, parameterCount, context, owner));
+        String returnType = returnTypeOf(declaration);
+        owner.methods.add(buildMethodMetric(declaration, declaration.getNameAsString(), kind, signature, returnType,
+                start, end, body, parameterCount, context, owner));
     }
 
-    private MethodMetric buildMethodMetric(String name, String kind, String signature, int start, int end,
-                                           BlockStmt body, int parameterCount, MethodContext context,
+    private MethodMetric buildMethodMetric(String name, String kind, String signature, String returnType, int start,
+                                           int end, BlockStmt body, int parameterCount, MethodContext context,
                                            TypeContext owner) {
-        return buildMethodMetric(null, name, kind, signature, start, end, body, parameterCount, context, owner, body);
+        return buildMethodMetric(null, name, kind, signature, returnType, start, end, body, parameterCount, context,
+                owner, body);
     }
 
     private MethodMetric buildMethodMetric(CallableDeclaration<?> declaration, String name, String kind,
-                                           String signature, int start, int end, BlockStmt body, int parameterCount,
-                                           MethodContext context, TypeContext owner) {
-        return buildMethodMetric(declaration, name, kind, signature, start, end, body, parameterCount, context, owner,
-                body);
+                                           String signature, String returnType, int start, int end, BlockStmt body,
+                                           int parameterCount, MethodContext context, TypeContext owner) {
+        return buildMethodMetric(declaration, name, kind, signature, returnType, start, end, body, parameterCount,
+                context, owner, body);
     }
 
     private MethodMetric buildMethodMetric(CallableDeclaration<?> declaration, String name, String kind,
-                                           String signature, int start, int end, BlockStmt body, int parameterCount,
-                                           MethodContext context, TypeContext owner, Node cognitiveRoot) {
+                                           String signature, String returnType, int start, int end, BlockStmt body,
+                                           int parameterCount, MethodContext context, TypeContext owner,
+                                           Node cognitiveRoot) {
         int endLine = end;
         int loc = countCodeLines(start, endLine);
         Node root = cognitiveRoot != null ? cognitiveRoot : body;
@@ -441,8 +444,13 @@ public class ComplexityVisitor extends VoidVisitorAdapter<Void> {
             god = riskCalculator.isGodMethod(scan);
         }
 
+        String resolvedReturnType = returnType;
+        if (declaration != null && resolvedReturnType.isEmpty()) {
+            resolvedReturnType = returnTypeOf(declaration);
+        }
+
         return MethodMetric.withoutLegacyExtensions(
-                name, kind, signature, start, endLine,
+                name, kind, signature, resolvedReturnType, start, endLine,
                 context.cyclomatic, Math.max(0, endLine - start + 1), loc, statements,
                 cognitive, context.exitPoints, context.catchClauses, context.switchCases,
                 context.outboundCallKeys.size(), context.lambdaCount, context.maxTryDepth,
@@ -691,6 +699,16 @@ public class ComplexityVisitor extends VoidVisitorAdapter<Void> {
         return (int) body.findAll(Statement.class).stream()
                 .filter(statement -> !(statement instanceof BlockStmt))
                 .count();
+    }
+
+    private static String returnTypeOf(CallableDeclaration<?> declaration) {
+        if (declaration.isConstructorDeclaration()) {
+            return "";
+        }
+        if (declaration.isMethodDeclaration()) {
+            return typeLabel(declaration.asMethodDeclaration().getType());
+        }
+        return "";
     }
 
     private static String signatureOf(CallableDeclaration<?> declaration) {
