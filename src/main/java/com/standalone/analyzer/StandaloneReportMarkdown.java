@@ -17,6 +17,10 @@ import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.Locale;
 import java.util.Map;
 import java.util.function.ToIntFunction;
@@ -144,7 +148,7 @@ final class StandaloneReportMarkdown {
 
         out.write("## Tarama özeti\n\n");
         out.write("| Alan | Değer |\n|------|-------|\n");
-        out.write("| Tarih | " + nullSafe(generatedAt) + " |\n");
+        out.write("| Tarih | " + escapeCell(formatGeneratedAtDisplay(generatedAt)) + " |\n");
         out.write("| Taranan klasör | `" + nullSafe(analyzedPath) + "` |\n");
         out.write("| Java sürümü (parse) | " + nullSafe(parserLevel) + " |\n");
         out.write("| Dosya (tarandı / okundu / hata) | "
@@ -962,6 +966,22 @@ final class StandaloneReportMarkdown {
             return;
         }
         reader.skipValue();
+    }
+
+    /** ISO `generatedAt` → yerel tarih-saat (rapor özeti; CMD/Mac aynı). */
+    static String formatGeneratedAtDisplay(String generatedAt) {
+        if (generatedAt == null || generatedAt.isBlank()) {
+            return "-";
+        }
+        try {
+            Instant instant = Instant.parse(generatedAt.trim());
+            ZoneId zone = ZoneId.systemDefault();
+            DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss", Locale.ROOT)
+                    .withZone(zone);
+            return formatter.format(instant) + " (" + zone.getId() + ")";
+        } catch (DateTimeParseException e) {
+            return generatedAt;
+        }
     }
 
     private static String nullSafe(String s) {

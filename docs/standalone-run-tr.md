@@ -14,7 +14,7 @@ JAR: `target/java-code-analyzer.jar` (bir kez `mvn package`). JDK **17+** gereki
 
 `{proje_kökü}` = script’i çalıştırdığın dizin veya `--path` ile verdiğin proje.
 
-`OUTPUT_DIR=C:\...\raporlar` ile klasör değiştirilir. `FIXED_REPORT=1` → `parser-raporu.md` / `standalone.json`.
+`OUTPUT_DIR=C:\...\raporlar` ile klasör değiştirilir. **Windows CMD** ve **Mac/Linux** varsayılanı zaman damgalı dosya adıdır; sabit ad için `FIXED_REPORT=1` → `parser-raporu.md` / `standalone.json`. Raporda **Tarih** satırı yerel `yyyy-MM-dd HH:mm:ss` olarak yazılır.
 
 ---
 

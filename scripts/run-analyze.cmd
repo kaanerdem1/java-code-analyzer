@@ -15,12 +15,10 @@ for %%I in ("%ROOT%") do set "ROOT=%%~fI"
 if not defined OUTPUT_DIR set "OUTPUT_DIR=%ROOT%\analysis-output"
 for %%I in ("%OUTPUT_DIR%") do set "OUTPUT_DIR=%%~fI"
 if not defined LANGUAGE_LEVEL set "LANGUAGE_LEVEL=JAVA_17"
-REM Varsayilan: sabit dosya adlari (VS Code'da analysis-output\parser-raporu.md). Zaman damgasi: set TIMESTAMP_REPORT=1
-if "%TIMESTAMP_REPORT%"=="1" (
-  set "FIXED_REPORT=0"
-) else if not defined FIXED_REPORT (
-  set "FIXED_REPORT=1"
-)
+REM Varsayilan: zaman damgali rapor (parser-etiket-YYYYMMDD-HHmmss.md). Sabit dosya: set FIXED_REPORT=1
+if not defined FIXED_REPORT set "FIXED_REPORT=0"
+if "%TIMESTAMP_REPORT%"=="1" set "FIXED_REPORT=0"
+if "%TIMESTAMP_REPORT%"=="0" set "FIXED_REPORT=1"
 
 set "JAR=%ANALYZER_JAR%"
 if not defined JAR set "JAR=%ROOT%\target\java-code-analyzer.jar"
@@ -142,6 +140,11 @@ for /f "skip=1 tokens=1" %%T in ('wmic os get localdatetime 2^>nul') do (
   if not defined WMIC_DT set "WMIC_DT=%%T"
 )
 if defined WMIC_DT set "STAMP=!WMIC_DT:~0,8!-!WMIC_DT:~8,4!"
+if "!STAMP!"=="unknown" (
+  for /f "delims=" %%T in ('powershell -NoProfile -Command "Get-Date -Format yyyyMMdd-HHmmss" 2^>nul') do (
+    if not defined PS_STAMP set "STAMP=%%T" & set "PS_STAMP=1"
+  )
+)
 set "JSON=%OUTPUT_DIR%\standalone-!TAG!-!STAMP!.json"
 set "MD=%OUTPUT_DIR%\parser-!TAG!-!STAMP!.md"
 exit /b 0
