@@ -320,4 +320,19 @@ public final class RiskProfileLoader {
                     new ClassDimensionSpec("Class Halstead effort", RiskProfile.ClassScanValues::halsteadEffortRounded)),
             Map.entry("godClassIndicator",
                     new ClassDimensionSpec("God class candidate", RiskProfile.ClassScanValues::godClassIndicator)));
+
+    /** CLI wiring: default profile when name blank, else load YAML. */
+    public static RiskCalculator createCalculator(String profileName, Path configPath) {
+        if (profileName == null || profileName.isBlank()) {
+            return new RiskCalculator();
+        }
+        Path resolved = configPath != null ? configPath : defaultConfigPath();
+        try {
+            RiskProfile profile = load(profileName.trim(), resolved);
+            return new RiskCalculator(profile);
+        } catch (IOException e) {
+            throw new IllegalArgumentException(
+                    "Failed to load risk profile '" + profileName + "': " + e.getMessage(), e);
+        }
+    }
 }

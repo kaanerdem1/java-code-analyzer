@@ -19,7 +19,7 @@ class DuplicateMemberConsolidationTest {
                 new DuplicateMember(file, cls, sig, 222, 235),
                 new DuplicateMember(file, cls, sig, 225, 238),
                 new DuplicateMember(file, cls, "other()", 10, 20));
-        List<DuplicateMember> out = DuplicateMemberConsolidation.consolidate(raw);
+        List<DuplicateMember> out = DuplicateDetectionEngine.consolidateMembers(raw);
         assertEquals(2, out.size());
         assertEquals(221, out.stream().filter(m -> sig.equals(m.method())).findFirst().orElseThrow().startLine());
         assertEquals(238, out.stream().filter(m -> sig.equals(m.method())).findFirst().orElseThrow().endLine());

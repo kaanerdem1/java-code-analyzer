@@ -47,6 +47,7 @@ public record MethodMetric(
         String methodHash,
         boolean analysisReused,
         List<String> accessedFieldNames,
+        String bodyHash,
         String structuralHash) {
 
     public MethodMetric {
@@ -55,6 +56,7 @@ public record MethodMetric(
         codeSmells = codeSmells == null ? List.of() : List.copyOf(codeSmells);
         methodHash = methodHash == null ? "" : methodHash;
         accessedFieldNames = accessedFieldNames == null ? List.of() : List.copyOf(accessedFieldNames);
+        bodyHash = bodyHash == null ? "" : bodyHash;
         structuralHash = structuralHash == null ? "" : structuralHash;
     }
 
@@ -67,13 +69,13 @@ public record MethodMetric(
             int maxMethodCallChainLength, int emptyCatchBlocks, int catchExceptionOrThrowable,
             int catchWithOnlyPrintStackTrace, int primitiveObsessionIndex, int maxBooleanOperatorsInCondition,
             int maxNestingDepth, int parameterCount, boolean godMethod, double riskScore, RiskLevel riskLevel,
-            List<String> riskFactors, RiskBreakdown riskBreakdown, String structuralHash) {
+            List<String> riskFactors, RiskBreakdown riskBreakdown, String bodyHash, String structuralHash) {
         return new MethodMetric(name, kind, signature, startLine, endLine, cyclomaticComplexity, physicalLines,
                 codeLines, logicalStatements, cognitiveComplexity, exitPoints, catchClauses, switchCases,
                 outboundDistinctCalls, lambdaCount, maxTryNestingDepth, localVariableCount, maxMethodCallChainLength,
                 emptyCatchBlocks, catchExceptionOrThrowable, catchWithOnlyPrintStackTrace, primitiveObsessionIndex,
                 maxBooleanOperatorsInCondition, maxNestingDepth, parameterCount, godMethod, riskScore, riskLevel,
                 riskFactors, riskBreakdown, HalsteadMetrics.EMPTY, List.of(), List.of(), "", false, List.of(),
-                structuralHash == null ? "" : structuralHash);
+                bodyHash == null ? "" : bodyHash, structuralHash == null ? "" : structuralHash);
     }
 }

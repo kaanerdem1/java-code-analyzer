@@ -18,8 +18,10 @@ import com.github.javaparser.ParserConfiguration;
 import com.standalone.analyzer.ScanOptions.ReportDetail;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
+import java.util.stream.Collectors;
 
 /**
  * Entry point.
@@ -65,7 +67,7 @@ public final class Java6CodeAnalyzerMain {
             logResolvedOutputTargets(options);
 
             RiskCalculator riskCalculator =
-                    RiskProfileResolver.create(options.riskProfile(), options.riskConfig());
+                    RiskProfileLoader.createCalculator(options.riskProfile(), options.riskConfig());
             AnalysisConsoleLogger.logRunHeader(
                     new AnalysisConsoleLogger.PathLabel(options.path().toAbsolutePath().normalize().toString()),
                     options.verbose(), riskCalculator);
@@ -216,7 +218,7 @@ public final class Java6CodeAnalyzerMain {
             Path markdown = null;
             int top = DEFAULT_TOP;
             Charset charset = StandardCharsets.UTF_8;
-            ParserConfiguration.LanguageLevel languageLevel = LanguageLevelOption.DEFAULT;
+            ParserConfiguration.LanguageLevel languageLevel = defaultLanguageLevel();
             List<String> includes = new ArrayList<>();
             List<String> excludes = new ArrayList<>();
             int workers = 0;
@@ -257,17 +259,17 @@ public final class Java6CodeAnalyzerMain {
                 } else if (arg.startsWith("--encoding=")) {
                     charset = Charset.forName(value(arg));
                 } else if (arg.startsWith("--language-level=")) {
-                    languageLevel = LanguageLevelOption.parse(value(arg));
+                    languageLevel = parseLanguageLevel(value(arg));
                 } else if (arg.startsWith("--workers=")) {
                     workers = parsePositiveInt(value(arg), "--workers");
                 } else if (arg.startsWith("--progress-every=")) {
                     progressEvery = parsePositiveInt(value(arg), "--progress-every");
                 } else if (arg.startsWith("--include=")) {
-                    includes.addAll(ScanOptionsParser.splitCsv(value(arg)));
+                    includes.addAll(ScanOptions.splitCsv(value(arg)));
                 } else if (arg.startsWith("--exclude=")) {
-                    excludes.addAll(ScanOptionsParser.splitCsv(value(arg)));
+                    excludes.addAll(ScanOptions.splitCsv(value(arg)));
                 } else if (arg.startsWith("--detail=")) {
-                    detail = ScanOptionsParser.parseDetail(value(arg));
+                    detail = ScanOptions.parseDetail(value(arg));
                 } else if (arg.equals("--no-default-ignores")) {
                     noDefaultIgnores = true;
                 } else if (arg.startsWith("--risk-profile=")) {
@@ -297,7 +299,7 @@ public final class Java6CodeAnalyzerMain {
             OutputTargets envTargets = applyEnvironmentOutputPaths(targets.json(), targets.markdown());
             output = envTargets.json();
             markdown = envTargets.markdown();
-            ScanOptions scanOptions = ScanOptionsParser.parse(includes, excludes, workers, progressEvery, detail,
+            ScanOptions scanOptions = ScanOptions.fromCli(includes, excludes, workers, progressEvery, detail,
                     !noDefaultIgnores, incrementalState, freshIncremental, detectDuplicates, minDuplicateTokens);
             return new Options(path, output, markdown, top, charset, languageLevel, scanOptions, riskProfile,
                     riskConfig, maxFailureRatio, failOnRisk, compact, verbose, help);
@@ -456,5 +458,31 @@ public final class Java6CodeAnalyzerMain {
                 throw new IllegalArgumentException("--top must be an integer: " + raw);
             }
         }
+    }
+
+    private static ParserConfiguration.LanguageLevel defaultLanguageLevel() {
+        return ParserConfiguration.LanguageLevel.JAVA_17;
+    }
+
+    private static ParserConfiguration.LanguageLevel parseLanguageLevel(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return defaultLanguageLevel();
+        }
+        String normalized = raw.trim().toUpperCase(Locale.ROOT);
+        try {
+            if (normalized.matches("JAVA_[\\d_]+")) {
+                return ParserConfiguration.LanguageLevel.valueOf(normalized);
+            }
+            if (normalized.matches("\\d+")) {
+                return ParserConfiguration.LanguageLevel.valueOf("JAVA_" + normalized);
+            }
+        } catch (IllegalArgumentException ignored) {
+            // fall through
+        }
+        throw new IllegalArgumentException(
+                "Unknown --language-level: " + raw + ". Supported: " + Arrays.stream(
+                                ParserConfiguration.LanguageLevel.values())
+                        .map(Enum::name)
+                        .collect(Collectors.joining(", ")));
     }
 }

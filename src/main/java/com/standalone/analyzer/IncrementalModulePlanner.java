@@ -1,8 +1,12 @@
 package com.standalone.analyzer;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -45,7 +49,7 @@ final class IncrementalModulePlanner {
         for (Map.Entry<String, List<String>> entry : filesByModule.entrySet()) {
             String moduleRoot = entry.getKey();
             List<String> paths = entry.getValue();
-            String fingerprint = ModuleFingerprint.from(paths, byteHashes);
+            String fingerprint = moduleFingerprint(paths, byteHashes);
             moduleFingerprints.put(moduleRoot, fingerprint);
 
             AnalyzerState.ModuleState prev = prevModules.get(moduleRoot);
@@ -76,5 +80,31 @@ final class IncrementalModulePlanner {
     private static String relativePath(Path base, Path file) {
         Path relative = base != null && file.startsWith(base) ? base.relativize(file) : file;
         return relative.toString().replace('\\', '/');
+    }
+
+    private static String moduleFingerprint(List<String> relativePaths, Map<String, String> byteHashByPath) {
+        List<String> lines = new ArrayList<>(relativePaths.size());
+        for (String path : relativePaths) {
+            String hash = byteHashByPath.get(path);
+            lines.add(path + "|" + (hash == null ? "" : hash));
+        }
+        Collections.sort(lines);
+        String payload = String.join("\n", lines);
+        return sha256Hex(payload.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static String sha256Hex(byte[] data) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(data);
+            StringBuilder hex = new StringBuilder(hash.length * 2);
+            for (byte b : hash) {
+                hex.append(Character.forDigit((b >> 4) & 0xF, 16));
+                hex.append(Character.forDigit(b & 0xF, 16));
+            }
+            return hex.toString();
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 not available", e);
+        }
     }
 }

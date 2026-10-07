@@ -65,6 +65,11 @@ final class HashService {
         return normalizeSourceText(declaration.toString());
     }
 
+    /** Normalised gövde metni (yorum/boşluk hariç); isim ve literal korunur — Type-1 birebir klon. */
+    static String normalizedBodyHash(BlockStmt body) {
+        return normalizeSourceText(body.toString());
+    }
+
     static String structuralHash(BlockStmt body) {
         BlockStmt clone = body.clone();
         clone.findAll(NameExpr.class).forEach(n -> n.setName("ID"));

@@ -11,6 +11,8 @@ import java.util.Map;
 public final class RiskCalculator {
 
     public static final double LEGACY_COMPOUND_FACTOR = 0.15;
+    /** Method risk scores use 0–100 with millisecond-style decimals (e.g. 68.374). */
+    public static final double SCORE_MAX = 100.0;
     private static final double WORST_METHOD_INFLUENCE = 0.65;
 
     /** Size thresholds for aggregate (class / file) assessment. */
@@ -208,7 +210,7 @@ public final class RiskCalculator {
     }
 
     private Assessment composeFromRawScore(double rawScore, List<String> factors) {
-        double score = RiskScoreScale.clamp(rawScore);
+        double score = clampScore(rawScore);
         RiskLevel level = RiskLevel.fromScore(score);
         return new Assessment(roundScore(score), level, List.copyOf(factors));
     }
@@ -246,7 +248,7 @@ public final class RiskCalculator {
         fingerprint = mix(fingerprint, values.swallowedExceptionSmells());
         fingerprint = mix(fingerprint, values.genericExceptionSmells());
         double unit = (fingerprint % 50_000) / 1_000_000.0;
-        return unit * RiskScoreScale.MAX;
+        return unit * SCORE_MAX;
     }
 
     private static long mix(long acc, int value) {
@@ -310,7 +312,18 @@ public final class RiskCalculator {
         } else {
             unit = 0.80 + 0.20 * Math.min(1.0, (double) (value - critical) / critical);
         }
-        return RiskScoreScale.toDisplayScale(unit);
+        return toDisplayScale(unit);
+    }
+
+    static double toDisplayScale(double unitIntervalSubScore) {
+        return unitIntervalSubScore * SCORE_MAX;
+    }
+
+    static double clampScore(double score) {
+        if (score <= 0) {
+            return 0;
+        }
+        return Math.min(SCORE_MAX, score);
     }
 
     private static void describe(List<String> factors, String label, int value, double subScore,

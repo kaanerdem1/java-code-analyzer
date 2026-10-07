@@ -19,6 +19,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.function.ToIntFunction;
 
 /** Türkçe, okunabilir standalone (parser) Markdown raporu. */
 final class StandaloneReportMarkdown {
@@ -739,14 +740,30 @@ final class StandaloneReportMarkdown {
         out.write("Tarama bittikten sonra proje genelinde aranır: **birebir / isim değişmiş** kopyalar ");
         out.write("yapısal hash ile, **yakın benzer** bloklar PMD CPD ile. Küçük metodlar (düşük CC ve az satır) ");
         out.write("filtrelenir. `--no-duplicates` ile kapatılabilir.\n\n");
-        out.write("**Nasıl okunur?** Her **grup** = aynı (veya çok benzer) kod parçasının farklı yerlerde tekrarı. ");
-        out.write("Gruptaki madde sayısı = **kaç konum** (dosya + metod); listedeki her satır bir kopyanın yeri — ");
-        out.write("hepsi birbirine benzer, çift çift eşleşme tablosu değil.\n\n");
+        out.write("**Nasıl okunur?** Her **grup** = aynı kod parçasının farklı yerlerde tekrarı. ");
+        out.write("**EXACT_TEXT** = gövde metni aynı (sabitler ve isimler dahil). **EXACT_STRUCTURE** = kontrol akışı ");
+        out.write("aynı ama isim/literal farklı olabilir; **aynı metod imzası** (parametre tipleri) şart. ");
+        out.write("**NEAR_MISS** = PMD token eşleşmesi; literal aynı, isimler farklı olabilir.\n\n");
         out.write("### Özet\n\n");
         out.write("| Tür | Grup sayısı | Konum sayısı |\n|-----|------------:|-------------:|\n");
-        out.write("| Birebir yapı (EXACT_STRUCTURE) | " + s.exactGroups() + " | "
-                + s.methodsInExactGroups() + " |\n");
-        out.write("| Yakın benzer (NEAR_MISS) | " + s.nearMissGroups() + " | "
+        int exactTextGroups = 0;
+        int exactTextMethods = 0;
+        int exactStructGroups = 0;
+        int exactStructMethods = 0;
+        for (DuplicateGroup group : g) {
+            if ("EXACT_TEXT".equals(group.similarityType())) {
+                exactTextGroups++;
+                exactTextMethods += group.members().size();
+            } else if ("EXACT_STRUCTURE".equals(group.similarityType())) {
+                exactStructGroups++;
+                exactStructMethods += group.members().size();
+            }
+        }
+        out.write("| Birebir gövde (EXACT_TEXT — literal/isim dahil) | " + exactTextGroups + " | "
+                + exactTextMethods + " |\n");
+        out.write("| Aynı imza + yapı (EXACT_STRUCTURE) | " + exactStructGroups + " | "
+                + exactStructMethods + " |\n");
+        out.write("| Yakın benzer (NEAR_MISS — literal aynı) | " + s.nearMissGroups() + " | "
                 + s.methodsInNearMissGroups() + " |\n\n");
         out.write("*Çok grup çıkıyorsa (JSON yazıcı gibi tekrarlı `w.name` kalıpları) eşiği yükseltin: ");
         out.write("`--min-duplicate-tokens=80` veya `--no-duplicates`.*\n\n");
@@ -763,7 +780,7 @@ final class StandaloneReportMarkdown {
                 break;
             }
             shown++;
-            DuplicateGroup group = DuplicateMemberConsolidation.consolidateGroup(rawGroup);
+            DuplicateGroup group = DuplicateDetectionEngine.consolidateGroup(rawGroup);
             List<DuplicateMember> members = group.members();
             out.write("#### " + escapeCell(group.groupId()) + " — "
                     + duplicateTypeLabelTr(group.similarityType()));
@@ -787,11 +804,14 @@ final class StandaloneReportMarkdown {
     }
 
     private static String duplicateTypeLabelTr(String similarityType) {
+        if ("EXACT_TEXT".equals(similarityType)) {
+            return "Birebir gövde (literal/isim dahil)";
+        }
         if ("EXACT_STRUCTURE".equals(similarityType)) {
-            return "Birebir / isim değişmiş yapı";
+            return "Aynı imza + yapısal klon (isim/literal soyutlu)";
         }
         if ("NEAR_MISS".equals(similarityType)) {
-            return "Yakın benzer kopya";
+            return "Yakın benzer (literal aynı, isim farklı olabilir)";
         }
         return nullSafe(similarityType);
     }
@@ -1040,6 +1060,76 @@ final class StandaloneReportMarkdown {
                     catchWithOnlyPrintStackTrace, primitiveObsessionIndex, maxBooleanOperatorsInCondition,
                     halsteadDifficultyRounded, halsteadEffortRounded, rawTypeUsage, stringConcatInLoop,
                     hardcodedLiteralCount, swallowedExceptionSmells, genericExceptionSmells);
+        }
+    }
+
+    /** Enterprise-java v3 metod tablosu sütunları (YAML blend_weights ile uyumlu). */
+    private static final class MethodRiskTableColumns {
+
+        record Column(String id, String header, String legendTr, ToIntFunction<MethodScanValues> value) {
+        }
+
+        static final List<Column> ENTERPRISE_V3 = List.of(
+                new Column("branching", "CC", "Dallanma (siklomatik) — if/for/catch/&& …", MethodScanValues::cyclomaticComplexity),
+                new Column("length", "Satır", "Kod satırı (LOC, yorum/boş hariç)", MethodScanValues::codeLines),
+                new Column("nesting", "İçi", "Maksimum iç içe blok derinliği", MethodScanValues::maxNestingDepth),
+                new Column("parameters", "Param", "Parametre sayısı", MethodScanValues::parameterCount),
+                new Column("cognitive", "Cog", "Cognitive (okunabilirlik) karmaşıklığı", MethodScanValues::cognitiveComplexity),
+                new Column("exitPoints", "Çıkış", "return / throw çıkış noktası sayısı", MethodScanValues::exitPoints),
+                new Column("logicalStatements", "İfade", "Mantıksal ifade (statement) sayısı", MethodScanValues::logicalStatements),
+                new Column("lambdaCount", "λ", "Lambda ifadesi sayısı", MethodScanValues::lambdaCount),
+                new Column("switchCases", "Switch", "Switch kolu sayısı", MethodScanValues::switchCases),
+                new Column("maxTryNestingDepth", "Try", "İç içe try derinliği", MethodScanValues::maxTryNestingDepth),
+                new Column("localVariableCount", "Yerel", "Yerel değişken sayısı", MethodScanValues::localVariableCount),
+                new Column("maxMethodCallChainLength", "Zincir", "Peş peşe metod çağrı zinciri uzunluğu",
+                        MethodScanValues::maxMethodCallChainLength),
+                new Column("catchClauses", "Catch", "catch bloğu sayısı", MethodScanValues::catchClauses),
+                new Column("emptyCatchBlocks", "∅Catch", "Boş catch bloğu", MethodScanValues::emptyCatchBlocks),
+                new Column("catchExceptionOrThrowable", "ExcCatch", "Exception/Throwable geniş catch",
+                        MethodScanValues::catchExceptionOrThrowable),
+                new Column("catchWithOnlyPrintStackTrace", "PST", "Yalnızca printStackTrace içeren catch",
+                        MethodScanValues::catchWithOnlyPrintStackTrace),
+                new Column("primitiveObsessionIndex", "Prim", "Primitive obsession indeksi", MethodScanValues::primitiveObsessionIndex),
+                new Column("maxBooleanOperatorsInCondition", "&&‖", "Tek koşuldaki max && / || sayısı",
+                        MethodScanValues::maxBooleanOperatorsInCondition),
+                new Column("halsteadDifficulty", "H.Dif", "Halstead zorluk (yuvarlak)", MethodScanValues::halsteadDifficultyRounded),
+                new Column("halsteadEffort", "H.Efor", "Halstead effort (yuvarlak)", MethodScanValues::halsteadEffortRounded),
+                new Column("rawTypeUsage", "Raw", "Ham (raw) tip kullanımı", MethodScanValues::rawTypeUsage),
+                new Column("stringConcatInLoop", "Concat", "Döngüde string birleştirme", MethodScanValues::stringConcatInLoop),
+                new Column("hardcodedLiteralCount", "Sabit", "Gömülü sabit (IP/SQL/URL vb.)", MethodScanValues::hardcodedLiteralCount),
+                new Column("swallowedExceptionSmells", "YutExc", "Yutulan exception kokusu", MethodScanValues::swallowedExceptionSmells),
+                new Column("genericExceptionSmells", "GenExc", "Generic exception catch kokusu",
+                        MethodScanValues::genericExceptionSmells));
+
+        static void writeScoreInputLegend(Writer out) throws IOException {
+            out.write("**Skor girdileri (enterprise-java v3):** Dokümantasyondaki legacy/Halstead/koku katmanının ");
+            out.write("ham sayıları — her biri YAML eşiklerine göre 0–100 alt skora çevrilip nihai **Risk** ");
+            out.write("sütununa girer (~25 metod boyutu). Sınıf düzeyi (LCOM3, Ce, god-class) JSON sınıf kaydında.\n\n");
+            for (Column c : ENTERPRISE_V3) {
+                out.write("- **" + c.header() + "** (`" + c.id() + "`): " + c.legendTr() + "\n");
+            }
+            out.write("- **FOUT†** (`outboundDistinctCalls`): Dış çağrı çeşitliliği — **katalog**; v3 metod skoruna ");
+            out.write("**girmez** (YAML policy).\n\n");
+        }
+
+        static void writeMetricHeaderRow(Writer out) throws IOException {
+            StringBuilder headers = new StringBuilder("| Risk | Seviye | Kod | Metod | Dosya |");
+            StringBuilder sep = new StringBuilder("|-----:|--------|:---:|-------|-------|");
+            for (Column c : ENTERPRISE_V3) {
+                headers.append(' ').append(c.header()).append(" |");
+                sep.append("---:|");
+            }
+            headers.append(" FOUT† | Nedeni | Dev? |");
+            sep.append("------:|--------|:----:|");
+            out.write(headers + "\n");
+            out.write(sep + "\n");
+        }
+
+        static void writeMetricCells(Writer out, MethodScanValues scan, int foutCatalog) throws IOException {
+            for (Column c : ENTERPRISE_V3) {
+                out.write(" " + c.value().applyAsInt(scan) + " |");
+            }
+            out.write(" " + foutCatalog + " |");
         }
     }
 

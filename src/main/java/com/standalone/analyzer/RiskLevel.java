@@ -1,7 +1,7 @@
 package com.standalone.analyzer;
 
 /**
- * Risk bands on the 0–100 score scale (see {@link RiskScoreScale}).
+ * Risk bands on the 0–100 score scale (see {@link RiskCalculator#SCORE_MAX}).
  */
 public enum RiskLevel {
     LOW(0.0, 30.0),

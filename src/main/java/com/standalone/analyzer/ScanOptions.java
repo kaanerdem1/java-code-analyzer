@@ -1,7 +1,9 @@
 package com.standalone.analyzer;
 
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 /** Monorepo / büyük codebase tarama ayarları. */
 public record ScanOptions(
@@ -38,5 +40,37 @@ public record ScanOptions(
         }
         includeGlobs = List.copyOf(includeGlobs);
         excludeGlobs = List.copyOf(excludeGlobs);
+    }
+
+    static ScanOptions fromCli(List<String> includeGlobs, List<String> excludeGlobs, int workers,
+                               int progressEvery, ReportDetail reportDetail,
+                               boolean applyDefaultIgnoredDirectories, Path incrementalStateFile,
+                               boolean ignoreIncrementalCache, boolean detectDuplicates, int minDuplicateTokens) {
+        ScanOptions defaults = defaults();
+        int resolvedWorkers = workers > 0 ? workers : defaults.workers();
+        int resolvedProgress = progressEvery > 0 ? progressEvery : defaults.progressEvery();
+        int resolvedMinTokens = minDuplicateTokens > 0 ? minDuplicateTokens : defaults.minDuplicateTokens();
+        return new ScanOptions(resolvedWorkers, resolvedProgress, includeGlobs, excludeGlobs, reportDetail,
+                applyDefaultIgnoredDirectories, incrementalStateFile, ignoreIncrementalCache,
+                detectDuplicates, resolvedMinTokens);
+    }
+
+    static ReportDetail parseDetail(String raw) {
+        return switch (raw.trim().toLowerCase(Locale.ROOT)) {
+            case "full" -> ReportDetail.FULL;
+            case "summary" -> ReportDetail.SUMMARY;
+            default -> throw new IllegalArgumentException("--detail must be full or summary: " + raw);
+        };
+    }
+
+    static List<String> splitCsv(String raw) {
+        List<String> parts = new ArrayList<>();
+        for (String piece : raw.split(",")) {
+            String trimmed = piece.trim();
+            if (!trimmed.isEmpty()) {
+                parts.add(trimmed);
+            }
+        }
+        return parts;
     }
 }

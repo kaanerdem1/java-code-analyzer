@@ -38,9 +38,9 @@ Metod gövdesinin bir **klonunu** alır (orijinal AST'ye dokunmaz), şunları ya
   (mevcut `normalizedMethodHash` ile aynı temizleme regex'leri kullanılıyor).
 
 Sonuç: değişken adları ve sabit değerler farklı olsa bile **aynı mantığa sahip iki metod aynı
-hash'i üretir**. Basit/uniform bir soyutlama olduğu için (her isim aynı `ID` oluyor, pozisyonel
-değil — örn. `a+b` ile `a+a` aynı `ID+ID`'ye düşebilir) küçük bir hassasiyet kaybı var; pratikte
-yanlış-pozitif oranı yüksek çıkarsa pozisyonel (`ID1`, `ID2`...) bir soyutlamaya yükseltilebilir.
+hash'i üretir**. **EXACT_STRUCTURE** gruplarında ek olarak **aynı metod imzası** (`signature`, parametre tipleri) şarttır; farklı girdi/çıktı imzalı metodlar artık yapısal grupta birleşmez.
+
+**EXACT_TEXT** (ayrı pass): `normalizedBodyHash` — gövde metni birebir (literal ve isimler dahil, yalnızca yorum/boşluk normalize). Gerçek kopyala-yapıştır için en kesin katman.
 
 **`MethodMetric.structuralHash`**
 Bu hash artık her metod için (trivial filtre uygulanmadan) hesaplanıp saklanıyor —
@@ -55,7 +55,7 @@ olarak rapora eklenir. **Yeni parse/IO yok** — tamamen önceki analiz adımın
 
 **`DuplicateDetectionEngine.detectNearMissDuplicates(Path root, int minimumTokens, List<FileMetric> files)`**
 - `CPDConfiguration` ile PMD CPD'yi yapılandırır: `setMinimumTileSize(minimumTokens)`,
-  `setOnlyRecognizeLanguage("java")`, `setIgnoreIdentifiers(true)`, `setIgnoreLiterals(true)`,
+  `setOnlyRecognizeLanguage("java")`, `setIgnoreIdentifiers(true)`, `setIgnoreLiterals(false)`,
   `addInputPath(root)`.
 - `CpdAnalysis.create(config)` ile analiz çalıştırılır (`try`-with-resources); PMD **kendi
   dosyalarını diskten ayrıca okur** — bizim AST geçişimizden bağımsız, ikinci bir tarama.

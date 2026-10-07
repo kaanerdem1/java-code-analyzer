@@ -120,7 +120,7 @@ public final class ProjectAnalyzer {
                 ? new StatePersistenceManager().load(stateFile)
                 : new AnalyzerState();
         boolean hadPreviousScan = incremental && !scanOptions.ignoreIncrementalCache()
-                && AnalyzerCacheIdentity.matches(loadedState, riskCalculator)
+                && cacheIdentityMatches(loadedState, riskCalculator)
                 && loadedState.files != null && !loadedState.files.isEmpty();
         if (incremental && !scanOptions.ignoreIncrementalCache() && !hadPreviousScan
                 && loadedState.files != null && !loadedState.files.isEmpty()) {
@@ -221,12 +221,12 @@ public final class ProjectAnalyzer {
         int methodsInExact = 0;
         int methodsInNearMiss = 0;
         for (DuplicateGroup group : groups) {
-            if ("EXACT_STRUCTURE".equals(group.similarityType())) {
-                exactGroups++;
-                methodsInExact += group.members().size();
-            } else {
+            if ("NEAR_MISS".equals(group.similarityType())) {
                 nearMissGroups++;
                 methodsInNearMiss += group.members().size();
+            } else {
+                exactGroups++;
+                methodsInExact += group.members().size();
             }
         }
         return new DuplicateStatistics(exactGroups, methodsInExact, nearMissGroups, methodsInNearMiss);
@@ -237,7 +237,7 @@ public final class ProjectAnalyzer {
             return;
         }
         System.err.printf(Locale.ROOT,
-                "[STANDALONE] Duplicates: %d exact-structure group(s) (%d methods) | "
+                "[STANDALONE] Duplicates: %d exact group(s) (%d methods) | "
                         + "%d near-miss group(s) (%d methods)%n",
                 stats.exactGroups(), stats.methodsInExactGroups(),
                 stats.nearMissGroups(), stats.methodsInNearMissGroups());
@@ -593,7 +593,7 @@ public final class ProjectAnalyzer {
             Map<String, String> semanticHashesByPath,
             Map<String, String> moduleFingerprints) {
         AnalyzerState newState = new AnalyzerState();
-        newState.cacheIdentity = AnalyzerCacheIdentity.current(riskCalculator);
+        newState.cacheIdentity = currentCacheIdentity(riskCalculator);
         for (Map.Entry<String, String> entry : moduleFingerprints.entrySet()) {
             AnalyzerState.ModuleState moduleState = new AnalyzerState.ModuleState();
             moduleState.fingerprint = entry.getValue();
@@ -682,5 +682,21 @@ public final class ProjectAnalyzer {
     private static Thread newWorkerThread(Runnable task) {
         int id = WORKER_ID.incrementAndGet();
         return new Thread(null, task, "standalone-parser-" + id, WORKER_STACK_BYTES);
+    }
+
+    private static final int CACHE_SCHEMA_VERSION = 4;
+
+    private static String currentCacheIdentity(RiskCalculator calculator) {
+        RiskProfile profile = calculator.profile();
+        return "schema=" + CACHE_SCHEMA_VERSION
+                + ";profile=" + profile.profileId()
+                + ";model=" + profile.modelVersion();
+    }
+
+    private static boolean cacheIdentityMatches(AnalyzerState state, RiskCalculator calculator) {
+        if (state == null || state.cacheIdentity == null || state.cacheIdentity.isBlank()) {
+            return false;
+        }
+        return state.cacheIdentity.equals(currentCacheIdentity(calculator));
     }
 }

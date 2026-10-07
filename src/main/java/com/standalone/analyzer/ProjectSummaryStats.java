@@ -91,6 +91,6 @@ final class ProjectSummaryStats {
                 return RiskCalculator.roundScore(bucket + 0.5);
             }
         }
-        return RiskScoreScale.MAX;
+        return RiskCalculator.SCORE_MAX;
     }
 }

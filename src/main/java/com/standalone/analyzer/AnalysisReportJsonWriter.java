@@ -253,6 +253,7 @@ final class AnalysisReportJsonWriter {
         writeCodeSmells(w, m.codeSmells());
         w.name("methodHash").value(m.methodHash());
         w.name("analysisReused").value(m.analysisReused());
+        w.name("bodyHash").value(m.bodyHash());
         w.name("structuralHash").value(m.structuralHash());
         w.endObject();
     }

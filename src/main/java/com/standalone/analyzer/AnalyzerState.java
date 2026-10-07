@@ -10,7 +10,7 @@ import java.util.Map;
 final class AnalyzerState {
 
     String lastScanTimestamp;
-    /** {@link AnalyzerCacheIdentity#current(RiskCalculator)} — mismatch invalidates cache automatically. */
+    /** {@link ProjectAnalyzer} cache identity — mismatch invalidates cache automatically. */
     String cacheIdentity;
     Map<String, FileState> files = new LinkedHashMap<>();
     /** Modül kökü (pom/Gradle) → dosya listesi byte-hash parmak izi. */
