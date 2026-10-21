@@ -55,7 +55,8 @@ class LegacyEnrichMetricsTest {
         ParseResult<CompilationUnit> parsed = PARSER.parse(src);
         CompilationUnit cu = parsed.getResult().orElseThrow();
         AnalysisReport.FileMetric file = FileMetricsBuilder.build(
-                "SmellBox.java", cu, new RiskCalculator(), Map.of(), null, "", false);
+                "SmellBox.java", src, ParserConfiguration.LanguageLevel.JAVA_17, cu, new RiskCalculator(),
+                Map.of(), null, "", false, false);
         return file.classes().stream()
                 .flatMap(c -> c.methods().stream())
                 .filter(m -> name.equals(m.name()))

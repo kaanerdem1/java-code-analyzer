@@ -82,35 +82,4 @@ public record RiskProfile(
                 .findFirst()
                 .map(ScoredDimension::thresholds);
     }
-
-    /** Legacy v1 constants (no YAML). */
-    public static RiskProfile v1Legacy() {
-        return new RiskProfile(
-                "v1-legacy",
-                "v1",
-                RiskCalculator.LEGACY_COMPOUND_FACTOR,
-                0.65,
-                0.35,
-                List.of(
-                        dim("branching", "Cyclomatic complexity", 0.40,
-                                10, 15, 30, MethodScanValues::cyclomaticComplexity),
-                        dim("length", "Lines of code", 0.20,
-                                50, 100, 200, MethodScanValues::codeLines),
-                        dim("nesting", "Nesting depth", 0.25,
-                                3, 4, 8, MethodScanValues::maxNestingDepth),
-                        dim("parameters", "Parameter count", 0.15,
-                                5, 7, 12, MethodScanValues::parameterCount)),
-                List.of(),
-                List.of(),
-                Map.of(
-                        "branching", new ThresholdTriple(10, 15, 30),
-                        "length", new ThresholdTriple(50, 100, 200),
-                        "parameters", new ThresholdTriple(5, 7, 12)));
-    }
-
-    private static ScoredDimension<MethodScanValues> dim(
-            String id, String label, double weight, int med, int high, int crit,
-            ToIntFunction<MethodScanValues> value) {
-        return new ScoredDimension<>(id, label, weight, new ThresholdTriple(med, high, crit), value);
-    }
 }

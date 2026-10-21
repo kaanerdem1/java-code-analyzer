@@ -18,7 +18,9 @@ public record AnalysisReport(
         CacheStatistics cacheStatistics,
         IncrementalChanges incrementalChanges,
         DuplicateStatistics duplicateStatistics,
-        List<DuplicateGroup> duplicateGroups) {
+        List<DuplicateGroup> duplicateGroups,
+        /** Aşama 1: klasik PMD ruleset (yalnızca {@link PmdProjectScanner} ve benzeri). */
+        PmdRulesetPhase pmdRulesetPhase) {
 
     public AnalysisReport {
         incrementalChanges = incrementalChanges == null ? IncrementalChanges.empty() : incrementalChanges;
@@ -207,5 +209,25 @@ public record AnalysisReport(
             int methodsInExactGroups,
             int nearMissGroups,
             int methodsInNearMissGroups) {
+    }
+
+    /** Klasik PMD ruleset koşusu (tarama aşaması 1). */
+    public record PmdRulesetPhase(
+            String rulesetPath,
+            int violationCount,
+            String violationsXmlPath,
+            List<PmdViolationRow> violationsSample) {
+
+        public PmdRulesetPhase {
+            violationsSample = violationsSample == null ? List.of() : List.copyOf(violationsSample);
+        }
+    }
+
+    public record PmdViolationRow(
+            String file,
+            int beginLine,
+            int endLine,
+            String ruleName,
+            String description) {
     }
 }

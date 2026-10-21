@@ -46,12 +46,6 @@ import java.util.stream.Collectors;
 public final class ProjectAnalyzer {
 
     private static final String TOOL_NAME = "Standalone Java Code Analyzer";
-    private static final Set<String> IGNORED_DIRECTORIES = Set.of(
-            ".git", ".svn", ".hg", ".idea", "target", "node_modules",
-            "build", "out", "bin", "dist", ".gradle", "coverage",
-            "generated", "generated-sources", "generated-test-sources",
-            "__generated__", ".mvn", "vendor", "tmp");
-
     /** Deep expression trees (generated SQL/strings) need more stack than the default ~1 MB. */
     private static final long WORKER_STACK_BYTES = 64L << 20;
     private static final AtomicInteger WORKER_ID = new AtomicInteger();
@@ -61,8 +55,6 @@ public final class ProjectAnalyzer {
     private final int topN;
     private final ParserConfiguration.LanguageLevel languageLevel;
     private final ScanOptions scanOptions;
-    private final DuplicateDetectionEngine duplicateDetectionEngine = new DuplicateDetectionEngine();
-
     public ProjectAnalyzer(Charset sourceCharset, int topN, ParserConfiguration.LanguageLevel languageLevel) {
         this(sourceCharset, topN, languageLevel, ScanOptions.defaults(), new RiskCalculator());
     }
@@ -97,7 +89,12 @@ public final class ProjectAnalyzer {
         Path base = Files.isDirectory(absoluteRoot) ? absoluteRoot : absoluteRoot.getParent();
 
         List<FileError> errors = Collections.synchronizedList(new ArrayList<>());
-        FileDiscovery discovery = collectJavaFiles(absoluteRoot, base, errors, scanOptions);
+        JavaSourceDiscovery.Result discovered = JavaSourceDiscovery.collect(absoluteRoot, base, errors, scanOptions);
+        FileDiscovery discovery = new FileDiscovery(discovered.paths(), discovered.skippedByFilter());
+        if (discovered.skippedDirectorySubtrees() > 0) {
+            System.err.println("[STANDALONE] Skipped " + discovered.skippedDirectorySubtrees()
+                    + " directory subtree(s) (build outputs / exclude globs)");
+        }
         List<Path> sources = discovery.paths();
 
         System.err.println("[STANDALONE] " + sources.size() + " .java file(s) queued"
@@ -163,7 +160,7 @@ public final class ProjectAnalyzer {
         int filesFailed = errors.size();
         Summary summary = summaryAccumulator != null
                 ? summaryAccumulator.toSummary(sources.size(), filesParsed, filesFailed)
-                : buildSummary(sources.size(), files, errors, moduleRoots);
+                : buildSummary(sources.size(), files, errors, absoluteRoot);
         List<RiskHotspot> hotspots = summaryAccumulator != null
                 ? summaryAccumulator.topHotspots()
                 : buildHotspots(files);
@@ -184,80 +181,19 @@ public final class ProjectAnalyzer {
             logCacheSummary(cacheStatistics);
         }
 
-        List<DuplicateGroup> duplicateGroups = detectDuplicateGroups(absoluteRoot, reportFiles);
-        DuplicateStatistics duplicateStatistics = summariseDuplicates(duplicateGroups);
-        logDuplicateSummary(duplicateStatistics);
+        List<DuplicateGroup> duplicateGroups = DuplicateScanSupport.detectGroups(absoluteRoot, scanOptions, reportFiles);
+        DuplicateStatistics duplicateStatistics = DuplicateScanSupport.summarise(duplicateGroups);
+        DuplicateScanSupport.logSummary(duplicateStatistics);
 
         AnalysisReport report = new AnalysisReport(TOOL_NAME, Instant.now().toString(), absoluteRoot.toString(),
                 languageLevel.name(), riskCalculator.buildRiskModel(), summary, hotspots, reportFiles, errors, null,
-                cacheStatistics, incrementalChanges, duplicateStatistics, duplicateGroups);
+                cacheStatistics, incrementalChanges, duplicateStatistics, duplicateGroups, null);
         ScanDiagnostics diagnostics = ScanDiagnostics.from(report, run, null);
         run.phase(ScanPhase.COMPLETE);
         return new AnalysisReport(TOOL_NAME, report.generatedAt(), report.analyzedPath(),
                 report.parserLanguageLevel(), report.riskModel(), report.summary(), report.topRiskyMethods(),
                 report.files(), report.errors(), diagnostics, cacheStatistics, incrementalChanges,
-                duplicateStatistics, duplicateGroups);
-    }
-
-    private List<DuplicateGroup> detectDuplicateGroups(Path absoluteRoot, List<FileMetric> files) {
-        if (!scanOptions.detectDuplicates()) {
-            return List.of();
-        }
-        List<DuplicateGroup> groups = new ArrayList<>();
-        groups.addAll(duplicateDetectionEngine.detectExactDuplicates(files));
-        if (shouldRunNearMissDuplicatePass(files.size())) {
-            try {
-                groups.addAll(duplicateDetectionEngine.detectNearMissDuplicates(
-                        absoluteRoot, scanOptions.minDuplicateTokens(), files));
-            } catch (RuntimeException e) {
-                System.err.println("[STANDALONE] Near-miss duplicate detection (PMD CPD) failed, "
-                        + "continuing with exact-duplicate results only: " + e);
-            }
-        }
-        return groups;
-    }
-
-    private boolean shouldRunNearMissDuplicatePass(int parsedFileCount) {
-        if (!scanOptions.detectNearMissDuplicates()) {
-            return false;
-        }
-        int threshold = scanOptions.nearDuplicateAutoSkipMinFiles();
-        if (threshold > 0 && parsedFileCount >= threshold && !scanOptions.forceNearMissDuplicates()) {
-            System.err.println("[STANDALONE] Near-miss duplicate (PMD CPD) skipped: "
-                    + parsedFileCount + " files >= threshold " + threshold
-                    + " (EXACT_TEXT/EXACT_STRUCTURE still run; use --force-near-duplicates or "
-                    + "--near-duplicate-auto-skip-files=0 to change).");
-            return false;
-        }
-        return true;
-    }
-
-    private static DuplicateStatistics summariseDuplicates(List<DuplicateGroup> groups) {
-        int exactGroups = 0;
-        int nearMissGroups = 0;
-        int methodsInExact = 0;
-        int methodsInNearMiss = 0;
-        for (DuplicateGroup group : groups) {
-            if ("NEAR_MISS".equals(group.similarityType())) {
-                nearMissGroups++;
-                methodsInNearMiss += group.members().size();
-            } else {
-                exactGroups++;
-                methodsInExact += group.members().size();
-            }
-        }
-        return new DuplicateStatistics(exactGroups, methodsInExact, nearMissGroups, methodsInNearMiss);
-    }
-
-    private static void logDuplicateSummary(DuplicateStatistics stats) {
-        if (stats.exactGroups() == 0 && stats.nearMissGroups() == 0) {
-            return;
-        }
-        System.err.printf(Locale.ROOT,
-                "[STANDALONE] Duplicates: %d exact group(s) (%d methods) | "
-                        + "%d near-miss group(s) (%d methods)%n",
-                stats.exactGroups(), stats.methodsInExactGroups(),
-                stats.nearMissGroups(), stats.methodsInNearMissGroups());
+                duplicateStatistics, duplicateGroups, null);
     }
 
     private List<FileMetric> parseAll(List<Path> sources, Path base, List<FileError> errors,
@@ -329,9 +265,10 @@ public final class ProjectAnalyzer {
                           ScanAccumulator summaryAccumulator, ScanRunContext run,
                           IncrementalAnalysisEngine incrementalEngine, CacheRunCounters cacheCounters,
                           IncrementalScanContext scanContext, Map<String, String> semanticHashesByPath) {
-        String relative = relativePath(base, source);
+        String relative = JavaSourceDiscovery.relativePath(base, source);
         run.parsingFile(relative);
         try {
+            String sourceText = Files.readString(source, sourceCharset());
             if (incrementalEngine != null) {
                 if (scanContext != null && scanContext.bulkReuse(relative)) {
                     FileMetric reused = incrementalEngine.reusableFromState(relative);
@@ -382,9 +319,10 @@ public final class ProjectAnalyzer {
                             return;
                         }
                     }
-                    FileMetric metric = incrementalEngine.buildFileMetric(relative, cu,
+                    FileMetric metric = incrementalEngine.buildFileMetric(relative, sourceText, outcome.usedLevel(), cu,
                             check.fileHash(), riskCalculator,
-                            incrementalEngine.previousMethodsByKey(relative), summaryAccumulator);
+                            incrementalEngine.previousMethodsByKey(relative), summaryAccumulator,
+                            scanOptions.pmdMetricAlignment());
                     files.add(metric);
                     if (cacheCounters != null) {
                         cacheCounters.filesReanalyzed++;
@@ -406,7 +344,8 @@ public final class ProjectAnalyzer {
             SourceParser.Outcome outcome = SourceParser.parse(source, sourceCharset(), languageLevel);
             ParseResult<CompilationUnit> result = outcome.result();
             if (result.isSuccessful() && result.getResult().isPresent()) {
-                files.add(buildFileMetric(relative, result.getResult().get(), summaryAccumulator));
+                files.add(buildFileMetric(relative, sourceText, outcome.usedLevel(),
+                        result.getResult().get(), summaryAccumulator));
             } else {
                 String detail = describe(result.getProblems());
                 if (outcome.attempted().size() > 1) {
@@ -460,59 +399,6 @@ public final class ProjectAnalyzer {
     private record FileDiscovery(List<Path> paths, int skippedByFilter) {
     }
 
-    private FileDiscovery collectJavaFiles(Path root, Path base, List<FileError> errors, ScanOptions scan)
-            throws IOException {
-        if (Files.isRegularFile(root)) {
-            return new FileDiscovery(List.of(root), 0);
-        }
-        FileSystem fs = root.getFileSystem();
-        PathGlobFilter filter = new PathGlobFilter(fs, scan.includeGlobs(), scan.excludeGlobs());
-        List<Path> result = new ArrayList<>();
-        int[] skipped = {0};
-        int[] skippedIgnoredDirs = {0};
-        Files.walkFileTree(root, new SimpleFileVisitor<>() {
-            @Override
-            public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
-                if (!dir.equals(root)) {
-                    if (shouldSkipAsBuildOutputDirectory(root, dir, scan.applyDefaultIgnoredDirectories())) {
-                        skippedIgnoredDirs[0]++;
-                        return FileVisitResult.SKIP_SUBTREE;
-                    }
-                    Path probe = dir.resolve("__analyzer_probe__.java");
-                    if (!filter.accept(root, probe)) {
-                        skippedIgnoredDirs[0]++;
-                        return FileVisitResult.SKIP_SUBTREE;
-                    }
-                }
-                return FileVisitResult.CONTINUE;
-            }
-
-            @Override
-            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
-                if (attrs.isRegularFile() && file.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".java")) {
-                    if (filter.accept(root, file)) {
-                        result.add(file);
-                    } else {
-                        skipped[0]++;
-                    }
-                }
-                return FileVisitResult.CONTINUE;
-            }
-
-            @Override
-            public FileVisitResult visitFileFailed(Path file, IOException exc) {
-                errors.add(new FileError(relativePath(base, file), "Cannot access: " + exc.getMessage()));
-                return FileVisitResult.CONTINUE;
-            }
-        });
-        Collections.sort(result);
-        if (skippedIgnoredDirs[0] > 0) {
-            System.err.println("[STANDALONE] Skipped " + skippedIgnoredDirs[0]
-                    + " directory subtree(s) (build outputs / exclude globs)");
-        }
-        return new FileDiscovery(result, skipped[0]);
-    }
-
     /**
      * Skip {@code target/build/dist/...} trees but not package segments such as
      * {@code src/main/java/com/acme/build/util}.
@@ -522,7 +408,7 @@ public final class ProjectAnalyzer {
             return false;
         }
         Path name = dir.getFileName();
-        if (name == null || !IGNORED_DIRECTORIES.contains(name.toString())) {
+        if (name == null || !JavaSourceDiscovery.IGNORED_DIRECTORIES.contains(name.toString())) {
             return false;
         }
         String relative = scanRoot.relativize(dir).toString().replace('\\', '/');
@@ -560,11 +446,6 @@ public final class ProjectAnalyzer {
                 || relativeUnixPath.startsWith("src/test/java/");
     }
 
-    private static String relativePath(Path base, Path file) {
-        Path relative = base != null && file.startsWith(base) ? base.relativize(file) : file;
-        return relative.toString().replace('\\', '/');
-    }
-
     private static String describe(List<Problem> problems) {
         if (problems.isEmpty()) {
             return "unknown parser failure";
@@ -574,8 +455,11 @@ public final class ProjectAnalyzer {
 
     // ------------------------------------------------------------------ per-file assembly
 
-    private FileMetric buildFileMetric(String relativePath, CompilationUnit cu, ScanAccumulator summaryAccumulator) {
-        return FileMetricsBuilder.build(relativePath, cu, riskCalculator, Map.of(), summaryAccumulator, "", false);
+    private FileMetric buildFileMetric(String relativePath, String sourceText,
+                                       ParserConfiguration.LanguageLevel languageLevel, CompilationUnit cu,
+                                       ScanAccumulator summaryAccumulator) {
+        return FileMetricsBuilder.build(relativePath, sourceText, languageLevel, cu, riskCalculator, Map.of(),
+                summaryAccumulator, "", false, scanOptions.pmdMetricAlignment());
     }
 
     private static void logIncrementalChanges(IncrementalChanges changes) {
@@ -658,45 +542,12 @@ public final class ProjectAnalyzer {
 
     // ------------------------------------------------------------------ report-level aggregation
 
-    private Summary buildSummary(int scanned, List<FileMetric> files, List<FileError> errors,
-                                 ModuleRootIndex moduleRoots) {
-        ProjectSummaryStats stats = new ProjectSummaryStats();
-        int classCount = 0;
-        int totalLoc = 0;
-        for (FileMetric file : files) {
-            totalLoc += file.codeLines();
-            classCount += file.classCount();
-            String moduleRoot = moduleRoots.moduleRoot(file.path());
-            for (ClassMetric type : file.classes()) {
-                for (MethodMetric method : type.methods()) {
-                    stats.addMethod(moduleRoot, method);
-                }
-            }
-        }
-        return stats.toSummary(scanned, files.size(), errors.size(), classCount, totalLoc);
+    private Summary buildSummary(int scanned, List<FileMetric> files, List<FileError> errors, Path scanRoot) {
+        return ReportAggregates.buildSummary(scanned, files, errors, scanRoot);
     }
 
     private List<RiskHotspot> buildHotspots(List<FileMetric> files) {
-        List<RiskHotspot> hotspots = new ArrayList<>();
-        for (FileMetric file : files) {
-            for (ClassMetric type : file.classes()) {
-                for (MethodMetric m : type.methods()) {
-                    if (MethodAccessorFilter.isSimpleGetterOrSetter(m)) {
-                        continue;
-                    }
-                    hotspots.add(new RiskHotspot(file.path(), file.packageName(), type.name(), m.signature(),
-                            m.startLine(), m.riskScore(), m.riskLevel(), m.cyclomaticComplexity(), m.codeLines(),
-                            m.maxNestingDepth(), m.parameterCount(), m.cognitiveComplexity(),
-                            m.outboundDistinctCalls(), RiskBreakdownUtil.dominantDriver(m.riskBreakdown()),
-                            m.riskFactors()));
-                }
-            }
-        }
-        hotspots.sort((a, b) -> {
-            int byScore = Double.compare(b.riskScore(), a.riskScore());
-            return byScore != 0 ? byScore : Integer.compare(b.cyclomaticComplexity(), a.cyclomaticComplexity());
-        });
-        return hotspots.size() > topN ? new ArrayList<>(hotspots.subList(0, topN)) : hotspots;
+        return ReportAggregates.buildHotspots(files, topN);
     }
 
     private static Thread newWorkerThread(Runnable task) {

@@ -46,6 +46,7 @@ final class StandaloneReportMarkdown {
         AncestorIndex ancestors = new AncestorIndex();
         writeHeader(out, report.tool(), report.generatedAt(), report.analyzedPath(), report.parserLanguageLevel(),
                 report.riskModel(), report.summary());
+        writePmdRulesetSection(out, report.pmdRulesetPhase());
         writeIncrementalCacheSection(out, report.cacheStatistics(), report.incrementalChanges());
         writeIncrementalChanges(out, report.incrementalChanges());
         writeMethodTableFromMetrics(out, moduleRoots, report.files(), ancestors);
@@ -174,6 +175,44 @@ final class StandaloneReportMarkdown {
         if (tool != null && !tool.isBlank()) {
             out.write("<!-- tool: " + tool + " -->\n\n");
         }
+    }
+
+    private static void writePmdRulesetSection(Writer out, AnalysisReport.PmdRulesetPhase phase)
+            throws IOException {
+        if (phase == null || phase.violationCount() == 0 && phase.violationsSample().isEmpty()) {
+            return;
+        }
+        out.write("## Aşama 1 — PMD ruleset ihlalleri\n\n");
+        out.write("Klasik PMD taraması (`PmdAnalysis`). Tam liste: `");
+        out.write(escapeCell(phase.violationsXmlPath()));
+        out.write("`. Ruleset: `");
+        out.write(escapeCell(phase.rulesetPath()));
+        out.write("`. Toplam **");
+        out.write(String.valueOf(phase.violationCount()));
+        out.write("** ihlal");
+        if (phase.violationCount() > phase.violationsSample().size()) {
+            out.write(" (tabloda ilk ");
+            out.write(String.valueOf(phase.violationsSample().size()));
+            out.write(" satır; geri kalan JSON `pmdRulesetPhase.violationsSample`)");
+        }
+        out.write(".\n\n");
+        if (!phase.violationsSample().isEmpty()) {
+            out.write("| Dosya | Satır | Kural | Açıklama |\n|-------|------:|-------|----------|\n");
+            for (AnalysisReport.PmdViolationRow row : phase.violationsSample()) {
+                out.write("| `");
+                out.write(escapeCell(row.file()));
+                out.write("` | ");
+                out.write(String.valueOf(row.beginLine()));
+                out.write(" | ");
+                out.write(escapeCell(row.ruleName()));
+                out.write(" | ");
+                out.write(escapeCell(row.description()));
+                out.write(" |\n");
+            }
+            out.write("\n");
+        }
+        out.write("## Aşama 2 — Metod risk ve metrikler\n\n");
+        out.write("Parser hattı: parametreler, risk skoru, duplicate (aşağıdaki tablolar).\n\n");
     }
 
     private static void writeModuleSummaries(Writer out, List<AnalysisReport.ModuleRiskSummary> modules)
@@ -1046,14 +1085,12 @@ final class StandaloneReportMarkdown {
     }
 
     private static String describeRiskModelTr(AnalysisReport.RiskModel riskModel) {
-        if ("v2".equals(riskModel.version()) || "v3".equals(riskModel.version())) {
-            String suffix = "v3".equals(riskModel.version())
-                    ? " — Halstead, kod kokuları, exception kokuları ve sınıf LCOM3/Ce dahil (~25 metod boyutu)."
-                    : ".";
-            return "**Puanlama:** enterprise-java (0–100); skor ≈ %58 en kötü boyut + %42 ağırlıklı "
-                    + "ortalama + ince ayırıcı; seviye 30 / 50 / 80 eşikleri" + suffix;
-        }
-        return "**Puanlama:** klasik v1 (0–100) — dört boyut; %65 en kötü + %35 ağırlıklı karışım.";
+        String version = riskModel.version() == null ? "" : riskModel.version();
+        String suffix = version.startsWith("v3")
+                ? " — Halstead, kod kokuları, exception kokuları ve sınıf LCOM3/Ce dahil (~25 metod boyutu)."
+                : ".";
+        return "**Puanlama:** enterprise-java YAML (0–100); skor ≈ %65 en kötü boyut + %35 ağırlıklı "
+                + "ortalama + ince ayırıcı; seviye 30 / 50 / 80 eşikleri" + suffix;
     }
 
     private record MethodRow(

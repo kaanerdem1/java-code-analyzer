@@ -1,5 +1,6 @@
 package com.standalone.analyzer;
 
+import com.github.javaparser.ParserConfiguration;
 import com.github.javaparser.ast.CompilationUnit;
 import com.standalone.analyzer.AnalysisReport.ClassMetric;
 import com.standalone.analyzer.AnalysisReport.FileMetric;
@@ -16,15 +17,20 @@ final class FileMetricsBuilder {
     private FileMetricsBuilder() {
     }
 
-    static FileMetric build(String relativePath, CompilationUnit cu, RiskCalculator riskCalculator,
-                            Map<String, MethodMetric> previousMethods, ScanAccumulator summaryAccumulator,
-                            String fileHash, boolean fullyReusedFromCache) {
+    static FileMetric build(String relativePath, String sourceText,
+                            ParserConfiguration.LanguageLevel languageLevel, CompilationUnit cu,
+                            RiskCalculator riskCalculator, Map<String, MethodMetric> previousMethods,
+                            ScanAccumulator summaryAccumulator, String fileHash, boolean fullyReusedFromCache,
+                            boolean pmdMetricAlignment) {
         BitSet codeLines = ComplexityVisitor.computeCodeLines(cu);
         Map<String, SupplementalMetrics.LegacyMethodMetrics> legacyIndex = LegacyMetricsIndex.fromCompilationUnit(cu);
         ComplexityVisitor visitor = new ComplexityVisitor(riskCalculator, codeLines, previousMethods, legacyIndex);
         cu.accept(visitor, null);
         List<ClassMetric> classes = SupplementalMetrics.enrich(cu, visitor.getClassMetrics(), riskCalculator,
                 previousMethods);
+        if (pmdMetricAlignment && sourceText != null && !sourceText.isEmpty()) {
+            classes = PmdMetricsAligner.align(sourceText, relativePath, languageLevel, classes, riskCalculator);
+        }
 
         List<MethodMetric> methods = classes.stream().flatMap(c -> c.methods().stream()).toList();
         int wmc = methods.stream().mapToInt(MethodMetric::cyclomaticComplexity).sum();

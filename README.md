@@ -88,14 +88,26 @@ mvn package
 Örnek (analyzer Masaüstü’nde, uygulama başka yerde):
 
 ```bash
-cd ~/Desktop/java-code-analyzer
+cd ~/Developer/java-code-analyzer
 ./scripts/run-analyze.sh ~/projects/mobil-backend
 ./scripts/run-pmd-analyze.sh ~/projects/mobil-backend
 ```
 
-**Çıktı:** `java-code-analyzer/analysis-output/parser-raporu.md` ve `pmd-raporu.md`
+**Çıktı:** `analysis-output/parser-…md` (parser) ve `analysis-output/pmd-…json` + `pmd-…md` + `pmd-…-violations.xml` (PMD ruleset + parser risk)
+
+## Üç tarama (karşılaştırma)
+
+| Komut | Anlam |
+|--------|--------|
+| `./scripts/run-analyze.sh <proje>` | Parser — risk JSON/MD (ana hat) |
+| `./scripts/run-pmd-analyze.sh <proje>` | **Aşama 1** PMD ruleset XML + **Aşama 2** parser metrik/risk/duplicate (JavaMetrics hizası) |
+| `./scripts/run-classic-pmd.sh <proje>` | **Klasik PMD** ruleset → `classic-pmd-*.xml` + violation Markdown |
+
+Mock: `run-standalone-mock.sh`, `run-pmd-mock.sh`, `run-classic-pmd-mock.sh`
 
 ## PMD komutları
+
+`run-pmd-analyze.sh` parser ile aynı env sözleşmesini kullanır (`INCLUDE_GLOBS`, `EXCLUDE_GLOBS`, `LANGUAGE_LEVEL`, `WORKERS`, `REPORT_DETAIL`, `STANDALONE_RISK_PROFILE`). **`PmdScanMain`:** önce `config/pmd-ruleset-complexity.xml` ile klasik PMD → `pmd-*-violations.xml`, ardından parser ile **risk skoru** JSON/Markdown; CC/cog/NCSS/NPath PMD `JavaMetrics` ile hizalanır (`docs/pmd-scan-tr.md`). Sadece violation MD: `run-classic-pmd.sh` veya `ReadableReportMain pmd …xml`.
 
 **Mock (bu repodaki örnek modüller):**
 

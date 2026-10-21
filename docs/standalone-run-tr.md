@@ -35,7 +35,7 @@ mvn package
 **Mac / Linux:**
 
 ```bash
-cd ~/Desktop/java-code-analyzer
+cd ~/Developer/java-code-analyzer
 mvn package
 ./scripts/run-analyze.sh /path/hedef-proje
 ```

@@ -20,17 +20,9 @@ class RiskProfileLoaderTest {
     }
 
     @Test
-    void enterpriseProfileChangesScoreVsLegacy() throws Exception {
-        Path config = Path.of("config/risk-parameters-proposal.yaml");
-        RiskCalculator legacy = new RiskCalculator();
-        RiskCalculator enterprise = new RiskCalculator(RiskProfileLoader.load("enterprise-java", config));
-        MethodScanValues sample = new MethodScanValues(12, 20, 5, 4, 16, 21, 6, 1, 3, 9, 0, 0, 4, 2, 0, 0, 0, 5, 2,
-                0, 0, 0, 0, 0, 0, 0);
-        double legacyScore = legacy.assessMethod(sample).score();
-        double enterpriseScore = enterprise.assessMethod(sample).score();
-        assertTrue(Math.abs(enterpriseScore - legacyScore) > 1.0,
-                "legacy=" + legacyScore + " enterprise=" + enterpriseScore);
-        assertTrue(enterprise.buildRiskModel().version().startsWith("v3"));
-        assertEquals("v1", legacy.buildRiskModel().version());
+    void defaultCalculatorLoadsEnterpriseProfile() {
+        RiskCalculator calculator = new RiskCalculator();
+        assertEquals(RiskProfileLoader.DEFAULT_PROFILE_ID, calculator.profile().profileId());
+        assertTrue(calculator.profile().modelVersion().startsWith("v3"));
     }
 }

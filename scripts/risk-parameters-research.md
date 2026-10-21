@@ -112,7 +112,7 @@ Büyük repoda LOC-ağırlıklı `projectRiskScore` alçalır; bu **normal**.
 
 ## 6. PMD ile hizalama
 
-Repoda `config/pmd-ruleset-complexity.xml` karşılaştırma için eşikleri **1**’e çekiyor (tüm metodlar violation). Üretim PMD seti için:
+Demo ruleset `config/pmd-ruleset-complexity-mock.xml` eşikleri **1** (tüm metodlar violation). Üretim `config/pmd-ruleset-complexity.xml`:
 
 - CyclomaticComplexity **methodReportLevel=10**
 - CognitiveComplexity **reportLevel=15** (referans; analyzer’da ayrı metrik yok)

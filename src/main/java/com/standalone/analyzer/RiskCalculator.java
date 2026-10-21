@@ -6,11 +6,10 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Turns raw metrics into a normalised 0.0 - 1.0 technical risk score (profile-driven v2 or legacy v1).
+ * Turns raw metrics into a normalised 0–100 technical risk score (YAML profile-driven).
  */
 public final class RiskCalculator {
 
-    public static final double LEGACY_COMPOUND_FACTOR = 0.15;
     /** Method risk scores use 0–100 with millisecond-style decimals (e.g. 68.374). */
     public static final double SCORE_MAX = 100.0;
     private static final double WORST_METHOD_INFLUENCE = 0.65;
@@ -35,8 +34,9 @@ public final class RiskCalculator {
 
     private final RiskProfile profile;
 
+    /** Varsayılan: {@link RiskProfileLoader#DEFAULT_PROFILE_ID} (YAML). */
     public RiskCalculator() {
-        this(RiskProfile.v1Legacy());
+        this(RiskProfileLoader.loadDefaultProfile());
     }
 
     public RiskCalculator(RiskProfile profile) {

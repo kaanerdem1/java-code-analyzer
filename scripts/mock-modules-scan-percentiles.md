@@ -2,7 +2,7 @@
 
 Otomatik üretim: `ScanMetricsCalibration` — 2026-09-30
 
-Kök: `/Users/kaanerdem/Desktop/java-code-analyzer/mock-modules`
+Kök: `/Users/kaanerdem/Developer/java-code-analyzer/mock-modules`
 
 Özet: 49 dosya, 49 sınıf, 254 metod, 3863 kod satırı.
 

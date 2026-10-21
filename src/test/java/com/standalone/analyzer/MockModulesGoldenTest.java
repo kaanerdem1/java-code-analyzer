@@ -26,7 +26,7 @@ class MockModulesGoldenTest {
     @Test
     void paymentOrchestratorRouteStaysLowToMedium() throws Exception {
         MethodMetric route = analyzeMethod("PaymentOrchestrator", "route");
-        assertEquals(68.015, route.riskScore(), 0.5);
+        assertEquals(62.987, route.riskScore(), 0.5);
         assertEquals(RiskLevel.HIGH, route.riskLevel());
     }
 
@@ -34,7 +34,7 @@ class MockModulesGoldenTest {
     void dimensionMergerMergeRowsGoldenScore() throws Exception {
         MethodMetric merge = analyzeMethod("DimensionMerger", "mergeRows");
         assertEquals(13, merge.cyclomaticComplexity());
-        assertEquals(78.024, merge.riskScore(), 0.5);
+        assertEquals(78.95, merge.riskScore(), 0.5);
         assertEquals(RiskLevel.HIGH, merge.riskLevel());
     }
 

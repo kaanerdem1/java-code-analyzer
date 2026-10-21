@@ -1,80 +1,80 @@
 # mock-modules tarama metrikleri — yüzdelikler
 
-Otomatik üretim: `ScanMetricsCalibration` — 2026-09-30
+Otomatik üretim: `ScanMetricsCalibration` — 2026-10-20
 
-Kök: `/Users/kaanerdem/Desktop/java-code-analyzer`
+Kök: `/Users/kaanerdem/Developer/java-code-analyzer`
 
-Özet: 89 dosya, 124 sınıf, 611 metod, 8657 kod satırı.
+Özet: 76 dosya, 141 sınıf, 656 metod, 9305 kod satırı.
 
 ## Metod
 
 | Metrik | n | p50 | p90 | p95 | max |
 |--------|---|-----|-----|-----|-----|
-| cyclomaticComplexity | 611 | 4 | 9 | 12 | 31 |
-| codeLines | 611 | 12 | 20 | 27 | 81 |
-| maxNestingDepth | 611 | 1 | 3 | 5 | 8 |
-| parameterCount | 611 | 2 | 4 | 4 | 16 |
-| cognitiveComplexity | 611 | 3 | 15 | 15 | 94 |
-| logicalStatements | 611 | 8 | 21 | 21 | 63 |
-| exitPoints | 611 | 1 | 5 | 6 | 11 |
-| catchClauses | 611 | 0 | 0 | 0 | 5 |
-| switchCases | 611 | 0 | 0 | 3 | 19 |
-| outboundDistinctCalls | 611 | 0 | 3 | 5 | 25 |
-| primitiveObsessionIndex | 611 | 4 | 12 | 12 | 30 |
-| maxBooleanOperatorsInCondition | 611 | 0 | 1 | 1 | 6 |
-| lambdaCount | 611 | 0 | 0 | 1 | 4 |
-| maxTryNestingDepth | 611 | 0 | 0 | 0 | 2 |
-| localVariableCount | 611 | 1 | 4 | 5 | 23 |
-| maxMethodCallChainLength | 611 | 1 | 3 | 3 | 15 |
-| emptyCatchBlocks | 611 | 0 | 0 | 0 | 1 |
-| catchExceptionOrThrowable | 611 | 0 | 0 | 0 | 1 |
-| catchWithOnlyPrintStackTrace | 611 | 0 | 0 | 0 | 0 |
+| cyclomaticComplexity | 656 | 2 | 7 | 10 | 36 |
+| codeLines | 656 | 8 | 25 | 37 | 105 |
+| maxNestingDepth | 656 | 1 | 2 | 3 | 8 |
+| parameterCount | 656 | 1 | 3 | 5 | 33 |
+| cognitiveComplexity | 656 | 1 | 7 | 12 | 94 |
+| logicalStatements | 656 | 4 | 17 | 27 | 92 |
+| exitPoints | 656 | 1 | 3 | 4 | 11 |
+| catchClauses | 656 | 0 | 0 | 0 | 5 |
+| switchCases | 656 | 0 | 0 | 0 | 29 |
+| outboundDistinctCalls | 656 | 0 | 4 | 6 | 25 |
+| primitiveObsessionIndex | 656 | 2 | 12 | 15 | 65 |
+| maxBooleanOperatorsInCondition | 656 | 0 | 1 | 1 | 6 |
+| lambdaCount | 656 | 0 | 1 | 1 | 4 |
+| maxTryNestingDepth | 656 | 0 | 0 | 1 | 2 |
+| localVariableCount | 656 | 0 | 5 | 8 | 32 |
+| maxMethodCallChainLength | 656 | 1 | 3 | 4 | 15 |
+| emptyCatchBlocks | 656 | 0 | 0 | 0 | 1 |
+| catchExceptionOrThrowable | 656 | 0 | 0 | 0 | 1 |
+| catchWithOnlyPrintStackTrace | 656 | 0 | 0 | 0 | 1 |
 
 ## Sınıf
 
 | Metrik | n | p50 | p90 | p95 | max |
 |--------|---|-----|-----|-----|-----|
-| methodCount | 124 | 4 | 7 | 11 | 58 |
-| codeLines (class) | 124 | 51 | 97 | 122 | 618 |
-| weightedMethodComplexity (WMC) | 124 | 17 | 44 | 45 | 182 |
-| publicMethodCount | 124 | 1 | 6 | 6 | 31 |
-| efferentCouplingProxy | 124 | 1 | 7 | 12 | 47 |
+| methodCount | 141 | 2 | 10 | 15 | 62 |
+| codeLines (class) | 141 | 19 | 121 | 230 | 950 |
+| weightedMethodComplexity (WMC) | 141 | 6 | 37 | 59 | 285 |
+| publicMethodCount | 141 | 0 | 3 | 4 | 36 |
+| efferentCouplingProxy | 141 | 1 | 9 | 14 | 51 |
 
 ## Önerilen YAML eşikleri (dikkat=p50, yüksek=p90, kritik=p95)
 
 ```yaml
       branching:
-        thresholds: { dikkat: 4, yuksek: 9, kritik: 12 }
+        thresholds: { dikkat: 2, yuksek: 7, kritik: 10 }
       length:
-        thresholds: { dikkat: 12, yuksek: 20, kritik: 27 }
+        thresholds: { dikkat: 8, yuksek: 25, kritik: 37 }
       nesting:
-        thresholds: { dikkat: 1, yuksek: 3, kritik: 5 }
+        thresholds: { dikkat: 1, yuksek: 2, kritik: 3 }
       parameters:
-        thresholds: { dikkat: 2, yuksek: 4, kritik: 4 }
+        thresholds: { dikkat: 1, yuksek: 3, kritik: 5 }
       cognitive:
-        thresholds: { dikkat: 3, yuksek: 15, kritik: 15 }
+        thresholds: { dikkat: 1, yuksek: 7, kritik: 12 }
       logicalStatements:
-        thresholds: { dikkat: 8, yuksek: 21, kritik: 21 }
+        thresholds: { dikkat: 4, yuksek: 17, kritik: 27 }
       exitPoints:
-        thresholds: { dikkat: 1, yuksek: 5, kritik: 6 }
+        thresholds: { dikkat: 1, yuksek: 3, kritik: 4 }
       catchClauses:
         thresholds: { dikkat: 0, yuksek: 0, kritik: 0 }
       switchCases:
-        thresholds: { dikkat: 0, yuksek: 0, kritik: 3 }
+        thresholds: { dikkat: 0, yuksek: 0, kritik: 0 }
       outboundDistinctCalls:
-        thresholds: { dikkat: 0, yuksek: 3, kritik: 5 }
+        thresholds: { dikkat: 0, yuksek: 4, kritik: 6 }
       primitiveObsessionIndex:
-        thresholds: { dikkat: 4, yuksek: 12, kritik: 12 }
+        thresholds: { dikkat: 2, yuksek: 12, kritik: 15 }
       maxBooleanOperatorsInCondition:
         thresholds: { dikkat: 0, yuksek: 1, kritik: 1 }
       lambdaCount:
-        thresholds: { dikkat: 0, yuksek: 0, kritik: 1 }
+        thresholds: { dikkat: 0, yuksek: 1, kritik: 1 }
       maxTryNestingDepth:
-        thresholds: { dikkat: 0, yuksek: 0, kritik: 0 }
+        thresholds: { dikkat: 0, yuksek: 0, kritik: 1 }
       localVariableCount:
-        thresholds: { dikkat: 1, yuksek: 4, kritik: 5 }
+        thresholds: { dikkat: 0, yuksek: 5, kritik: 8 }
       maxMethodCallChainLength:
-        thresholds: { dikkat: 1, yuksek: 3, kritik: 3 }
+        thresholds: { dikkat: 1, yuksek: 3, kritik: 4 }
       emptyCatchBlocks:
         thresholds: { dikkat: 0, yuksek: 0, kritik: 0 }
       catchExceptionOrThrowable:

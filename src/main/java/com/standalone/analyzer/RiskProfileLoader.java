@@ -15,6 +15,9 @@ import java.util.function.ToIntFunction;
 /** Loads {@link RiskProfile} from {@code config/risk-parameters-proposal.yaml}. */
 public final class RiskProfileLoader {
 
+    /** Varsayılan CLI / {@link RiskCalculator} profili (YAML {@code enterprise-java}). */
+    public static final String DEFAULT_PROFILE_ID = "enterprise-java";
+
     private static final String DEFAULT_RESOURCE = "/config/risk-parameters-proposal.yaml";
     private static final double DEFAULT_COMPOUND = 0.15;
 
@@ -322,17 +325,27 @@ public final class RiskProfileLoader {
                     new ClassDimensionSpec("God class candidate", RiskProfile.ClassScanValues::godClassIndicator)));
 
     /** CLI wiring: default profile when name blank, else load YAML. */
-    public static RiskCalculator createCalculator(String profileName, Path configPath) {
-        if (profileName == null || profileName.isBlank()) {
-            return new RiskCalculator();
+    public static RiskProfile loadDefaultProfile() {
+        Path resolved = defaultConfigPath();
+        try {
+            return load(DEFAULT_PROFILE_ID, resolved);
+        } catch (IOException e) {
+            throw new IllegalArgumentException(
+                    "Failed to load default risk profile '" + DEFAULT_PROFILE_ID + "': " + e.getMessage(), e);
         }
+    }
+
+    public static RiskCalculator createCalculator(String profileName, Path configPath) {
+        String resolvedName = profileName == null || profileName.isBlank()
+                ? DEFAULT_PROFILE_ID
+                : profileName.trim();
         Path resolved = configPath != null ? configPath : defaultConfigPath();
         try {
-            RiskProfile profile = load(profileName.trim(), resolved);
+            RiskProfile profile = load(resolvedName, resolved);
             return new RiskCalculator(profile);
         } catch (IOException e) {
             throw new IllegalArgumentException(
-                    "Failed to load risk profile '" + profileName + "': " + e.getMessage(), e);
+                    "Failed to load risk profile '" + resolvedName + "': " + e.getMessage(), e);
         }
     }
 }

@@ -35,6 +35,7 @@ final class AnalysisReportJsonWriter {
         writeIncrementalChanges(w, report.incrementalChanges());
         writeDuplicateStatistics(w, report.duplicateStatistics());
         writeDuplicateGroups(w, report.duplicateGroups());
+        writePmdRulesetPhase(w, report.pmdRulesetPhase());
         writeHotspots(w, report.topRiskyMethods());
         writeFiles(w, report.files());
         writeErrors(w, report.errors());
@@ -228,6 +229,8 @@ final class AnalysisReportJsonWriter {
         w.name("codeLines").value(m.codeLines());
         w.name("logicalStatements").value(m.logicalStatements());
         w.name("cognitiveComplexity").value(m.cognitiveComplexity());
+        w.name("npathComplexity").value(m.npathComplexity());
+        w.name("ncssCount").value(m.ncssCount());
         w.name("exitPoints").value(m.exitPoints());
         w.name("catchClauses").value(m.catchClauses());
         w.name("switchCases").value(m.switchCases());
@@ -247,7 +250,9 @@ final class AnalysisReportJsonWriter {
         w.name("riskScore").value(m.riskScore());
         w.name("riskLevel").value(m.riskLevel().name());
         writeStringList(w, "riskFactors", m.riskFactors());
-        writeBreakdown(w, m.riskBreakdown());
+        if (m.riskBreakdown() != null) {
+            writeBreakdown(w, m.riskBreakdown());
+        }
         writeHalstead(w, "halstead", m.halstead());
         writeExceptionSmells(w, m.exceptionSmells());
         writeCodeSmells(w, m.codeSmells());
@@ -294,6 +299,32 @@ final class AnalysisReportJsonWriter {
             w.endObject();
         }
         w.endArray();
+    }
+
+    private static void writePmdRulesetPhase(JsonWriter w, AnalysisReport.PmdRulesetPhase phase)
+            throws IOException {
+        w.name("pmdRulesetPhase");
+        if (phase == null) {
+            w.nullValue();
+            return;
+        }
+        w.beginObject();
+        w.name("rulesetPath").value(phase.rulesetPath());
+        w.name("violationCount").value(phase.violationCount());
+        w.name("violationsXmlPath").value(phase.violationsXmlPath());
+        w.name("violationsSample");
+        w.beginArray();
+        for (AnalysisReport.PmdViolationRow row : phase.violationsSample()) {
+            w.beginObject();
+            w.name("file").value(row.file());
+            w.name("beginLine").value(row.beginLine());
+            w.name("endLine").value(row.endLine());
+            w.name("ruleName").value(row.ruleName());
+            w.name("description").value(row.description());
+            w.endObject();
+        }
+        w.endArray();
+        w.endObject();
     }
 
     private static void writeCacheStatistics(JsonWriter w, AnalysisReport.CacheStatistics cache) throws IOException {

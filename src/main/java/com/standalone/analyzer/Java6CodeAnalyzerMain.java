@@ -195,7 +195,7 @@ public final class Java6CodeAnalyzerMain {
                   --exclude=<glob>    Skip matching paths (repeatable / comma-separated)
                   --detail=full|summary  full = all methods in JSON; summary = hotspots + file totals
                   --no-default-ignores  Do not skip target/build/etc. at module boundaries
-                  --risk-profile=<id>   YAML profile (e.g. enterprise-java); default = legacy v1
+                  --risk-profile=<id>   YAML profile (default: enterprise-java)
                   --risk-config=<file>  Risk YAML path (default: config/risk-parameters-proposal.yaml)
                   --max-failure-ratio=<0-1>  Exit 2 if parse failures / files scanned exceeds ratio
                   --fail-on-risk=<LEVEL>   Exit 3 if any method or project risk >= LEVEL (LOW|MEDIUM|HIGH|CRITICAL)
@@ -206,6 +206,7 @@ public final class Java6CodeAnalyzerMain {
                   --min-duplicate-tokens=<n>  PMD CPD minimum token run (default 50)
                   --near-duplicate-auto-skip-files=<n>  Opt-in: skip CPD when parsed files >= n (default 0=never)
                   --force-near-duplicates  Reserved; CPD runs by default unless --no-near-duplicates or opt-in skip
+                  --no-pmd-metrics    Skip PMD CC/cognitive/NCSS/NPath alignment (faster; JavaParser counts only)
                   --help              Show this help
                 """);
     }
@@ -242,6 +243,7 @@ public final class Java6CodeAnalyzerMain {
             boolean detectNearMissDuplicates = true;
             int nearDuplicateAutoSkipMinFiles = -1;
             boolean forceNearMissDuplicates = false;
+            boolean pmdMetricAlignment = true;
             boolean outputFlagSeen = false;
             boolean markdownFlagSeen = false;
 
@@ -301,6 +303,8 @@ public final class Java6CodeAnalyzerMain {
                             "--near-duplicate-auto-skip-files");
                 } else if (arg.equals("--force-near-duplicates")) {
                     forceNearMissDuplicates = true;
+                } else if (arg.equals("--no-pmd-metrics")) {
+                    pmdMetricAlignment = false;
                 } else {
                     throw new IllegalArgumentException("Unknown argument: " + arg);
                 }
@@ -314,7 +318,8 @@ public final class Java6CodeAnalyzerMain {
             markdown = envTargets.markdown();
             ScanOptions scanOptions = ScanOptions.fromCli(includes, excludes, workers, progressEvery, detail,
                     !noDefaultIgnores, incrementalState, freshIncremental, detectDuplicates, minDuplicateTokens,
-                    detectNearMissDuplicates, nearDuplicateAutoSkipMinFiles, forceNearMissDuplicates);
+                    detectNearMissDuplicates, nearDuplicateAutoSkipMinFiles, forceNearMissDuplicates,
+                    pmdMetricAlignment);
             return new Options(path, output, markdown, top, charset, languageLevel, scanOptions, riskProfile,
                     riskConfig, maxFailureRatio, failOnRisk, compact, verbose, help);
         }

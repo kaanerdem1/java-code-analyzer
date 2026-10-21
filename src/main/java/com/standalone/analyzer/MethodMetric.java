@@ -50,7 +50,11 @@ public record MethodMetric(
         boolean analysisReused,
         List<String> accessedFieldNames,
         String bodyHash,
-        String structuralHash) {
+        String structuralHash,
+        /** PMD {@link net.sourceforge.pmd.lang.java.metrics.JavaMetrics#NPATH} (capped). */
+        int npathComplexity,
+        /** PMD {@link net.sourceforge.pmd.lang.java.metrics.JavaMetrics#NCSS}. */
+        int ncssCount) {
 
     public MethodMetric {
         halstead = halstead == null ? HalsteadMetrics.EMPTY : halstead;
@@ -81,12 +85,31 @@ public record MethodMetric(
             int catchWithOnlyPrintStackTrace, int primitiveObsessionIndex, int maxBooleanOperatorsInCondition,
             int maxNestingDepth, int parameterCount, boolean godMethod, double riskScore, RiskLevel riskLevel,
             List<String> riskFactors, RiskBreakdown riskBreakdown, String bodyHash, String structuralHash) {
+        return withoutLegacyExtensions(name, kind, signature, returnType, startLine, endLine, cyclomaticComplexity,
+                physicalLines, codeLines, logicalStatements, cognitiveComplexity, exitPoints, catchClauses, switchCases,
+                outboundDistinctCalls, lambdaCount, maxTryNestingDepth, localVariableCount, maxMethodCallChainLength,
+                emptyCatchBlocks, catchExceptionOrThrowable, catchWithOnlyPrintStackTrace, primitiveObsessionIndex,
+                maxBooleanOperatorsInCondition, maxNestingDepth, parameterCount, godMethod, riskScore, riskLevel,
+                riskFactors, riskBreakdown, bodyHash, structuralHash, 0, 0);
+    }
+
+    static MethodMetric withoutLegacyExtensions(
+            String name, String kind, String signature, String returnType, int startLine, int endLine,
+            int cyclomaticComplexity, int physicalLines, int codeLines, int logicalStatements,
+            int cognitiveComplexity, int exitPoints, int catchClauses, int switchCases,
+            int outboundDistinctCalls, int lambdaCount, int maxTryNestingDepth, int localVariableCount,
+            int maxMethodCallChainLength, int emptyCatchBlocks, int catchExceptionOrThrowable,
+            int catchWithOnlyPrintStackTrace, int primitiveObsessionIndex, int maxBooleanOperatorsInCondition,
+            int maxNestingDepth, int parameterCount, boolean godMethod, double riskScore, RiskLevel riskLevel,
+            List<String> riskFactors, RiskBreakdown riskBreakdown, String bodyHash, String structuralHash,
+            int npathComplexity, int ncssCount) {
         return new MethodMetric(name, kind, signature, returnType, startLine, endLine, cyclomaticComplexity, physicalLines,
                 codeLines, logicalStatements, cognitiveComplexity, exitPoints, catchClauses, switchCases,
                 outboundDistinctCalls, lambdaCount, maxTryNestingDepth, localVariableCount, maxMethodCallChainLength,
                 emptyCatchBlocks, catchExceptionOrThrowable, catchWithOnlyPrintStackTrace, primitiveObsessionIndex,
                 maxBooleanOperatorsInCondition, maxNestingDepth, parameterCount, godMethod, riskScore, riskLevel,
                 riskFactors, riskBreakdown, HalsteadMetrics.EMPTY, List.of(), List.of(), "", false, List.of(),
-                bodyHash == null ? "" : bodyHash, structuralHash == null ? "" : structuralHash);
+                bodyHash == null ? "" : bodyHash, structuralHash == null ? "" : structuralHash, npathComplexity,
+                ncssCount);
     }
 }

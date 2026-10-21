@@ -2,7 +2,7 @@
 
 Bu metin, **bir servis metodunun** nasıl puanlandığını günlük dille anlatır. Varsayılan öneri profili: **`enterprise-java`** ([`config/risk-parameters-proposal.yaml`](../config/risk-parameters-proposal.yaml)).
 
-**CLI:** `--risk-profile=enterprise-java` → YAML’daki **17 metod boyutu** skora girer. Profil vermezsen **legacy v1** (sadece 4 boyut) kullanılır.
+**CLI:** Varsayılan **`enterprise-java`** (tüm metod boyutları YAML’dan).
 
 ---
 

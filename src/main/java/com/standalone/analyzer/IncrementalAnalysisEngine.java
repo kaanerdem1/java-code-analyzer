@@ -1,5 +1,6 @@
 package com.standalone.analyzer;
 
+import com.github.javaparser.ParserConfiguration;
 import com.github.javaparser.ast.CompilationUnit;
 import com.standalone.analyzer.AnalysisReport.ClassMetric;
 import com.standalone.analyzer.AnalysisReport.FileMetric;
@@ -63,11 +64,12 @@ final class IncrementalAnalysisEngine {
                 && semanticFileHash.equals(previous.semanticFileHash);
     }
 
-    FileMetric buildFileMetric(String relativePath, CompilationUnit cu, String fileHash,
+    FileMetric buildFileMetric(String relativePath, String sourceText,
+                               ParserConfiguration.LanguageLevel languageLevel, CompilationUnit cu, String fileHash,
                                RiskCalculator riskCalculator, Map<String, MethodMetric> previousMethods,
-                               ScanAccumulator summaryAccumulator) {
-        return FileMetricsBuilder.build(relativePath, cu, riskCalculator, previousMethods, summaryAccumulator,
-                fileHash, false);
+                               ScanAccumulator summaryAccumulator, boolean pmdMetricAlignment) {
+        return FileMetricsBuilder.build(relativePath, sourceText, languageLevel, cu, riskCalculator, previousMethods,
+                summaryAccumulator, fileHash, false, pmdMetricAlignment);
     }
 
     Map<String, MethodMetric> previousMethodsByKey(String relativePath) {

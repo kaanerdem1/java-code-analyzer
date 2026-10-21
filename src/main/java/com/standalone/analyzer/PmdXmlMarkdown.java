@@ -82,7 +82,7 @@ final class PmdXmlMarkdown {
 
         md.append("\n---\n");
         md.append("*Parser tarafındaki risk skoru için `parser-raporu.md` dosyasına bakın. ");
-        md.append("CC değerleri genelde yakın olur; cognitive ve NPath yalnızca PMD’de vardır.*\n");
+        md.append("CC/cognitive parser taramasında PMD metrikleri ile hizalanır; bu rapor bağımsız PMD koşusudur.*\n");
         return md.toString();
     }
 

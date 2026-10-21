@@ -21,7 +21,8 @@ public record ScanOptions(
         boolean detectNearMissDuplicates,
         /** When &gt; 0 and parsed file count &gt;= this, skip CPD unless {@link #forceNearMissDuplicates}. */
         int nearDuplicateAutoSkipMinFiles,
-        boolean forceNearMissDuplicates) {
+        boolean forceNearMissDuplicates,
+        boolean pmdMetricAlignment) {
 
     /** 0 = CPD her zaman çalışır; yalnızca {@code --near-duplicate-auto-skip-files=N} (N&gt;0) ile opt-in atlama. */
     public static final int DEFAULT_NEAR_DUPLICATE_AUTO_SKIP_MIN_FILES = 0;
@@ -37,7 +38,7 @@ public record ScanOptions(
         int cpus = Runtime.getRuntime().availableProcessors();
         int workers = Math.max(1, Math.min(cpus, cpus <= 4 ? cpus : cpus - 1));
         return new ScanOptions(workers, 500, List.of(), List.of(), ReportDetail.FULL, true, null, false, true, 50,
-                true, DEFAULT_NEAR_DUPLICATE_AUTO_SKIP_MIN_FILES, false);
+                true, DEFAULT_NEAR_DUPLICATE_AUTO_SKIP_MIN_FILES, false, true);
     }
 
     public ScanOptions {
@@ -56,7 +57,7 @@ public record ScanOptions(
                                boolean applyDefaultIgnoredDirectories, Path incrementalStateFile,
                                boolean ignoreIncrementalCache, boolean detectDuplicates, int minDuplicateTokens,
                                boolean detectNearMissDuplicates, int nearDuplicateAutoSkipMinFiles,
-                               boolean forceNearMissDuplicates) {
+                               boolean forceNearMissDuplicates, boolean pmdMetricAlignment) {
         ScanOptions defaults = defaults();
         int resolvedWorkers = workers > 0 ? workers : defaults.workers();
         int resolvedProgress = progressEvery > 0 ? progressEvery : defaults.progressEvery();
@@ -67,7 +68,7 @@ public record ScanOptions(
         return new ScanOptions(resolvedWorkers, resolvedProgress, includeGlobs, excludeGlobs, reportDetail,
                 applyDefaultIgnoredDirectories, incrementalStateFile, ignoreIncrementalCache,
                 detectDuplicates, resolvedMinTokens, detectNearMissDuplicates, resolvedAutoSkip,
-                forceNearMissDuplicates);
+                forceNearMissDuplicates, pmdMetricAlignment);
     }
 
     static ReportDetail parseDetail(String raw) {
