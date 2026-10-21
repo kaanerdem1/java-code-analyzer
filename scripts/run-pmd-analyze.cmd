@@ -65,6 +65,8 @@ if /I "%REPORT_DETAIL%"=="summary" set "EXTRA=!EXTRA! --detail=summary"
 if defined INCLUDE_GLOBS set "EXTRA=!EXTRA! --include=%INCLUDE_GLOBS%"
 if not defined EXCLUDE_GLOBS set "EXCLUDE_GLOBS=**/src/test/**"
 if defined EXCLUDE_GLOBS set "EXTRA=!EXTRA! --exclude=%EXCLUDE_GLOBS%"
+if defined SOURCE_ENCODING set "EXTRA=!EXTRA! --encoding=%SOURCE_ENCODING%"
+if defined ENCODING if not defined SOURCE_ENCODING set "EXTRA=!EXTRA! --encoding=%ENCODING%"
 
 pushd "%ROOT%"
 java -cp "%JAR%" com.standalone.analyzer.PmdScanMain ^

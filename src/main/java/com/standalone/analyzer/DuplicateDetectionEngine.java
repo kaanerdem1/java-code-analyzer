@@ -29,7 +29,10 @@ import java.util.stream.Collectors;
 final class DuplicateDetectionEngine {
 
     private static final int MIN_CC_FOR_DUPLICATE_CHECK = 3;
-    private static final int MIN_LOC_FOR_DUPLICATE_CHECK = 8;
+    /** Metod gövdesi bu satırın altındaysa benzerlik adayı değil. */
+    private static final int MIN_LOC_FOR_DUPLICATE_CHECK = 40;
+    /** Eşleşen / kopya bölge 40 satırdan kısaysa grup rapora/JSON’a girmez. */
+    static final int MIN_DUPLICATED_LINES = 40;
 
     List<DuplicateGroup> detectExactTextDuplicates(List<FileMetric> files) {
         return groupByHash(files, "EXACT_TEXT", method -> method.bodyHash());
@@ -143,9 +146,10 @@ final class DuplicateDetectionEngine {
                                 beginLine, endLine));
                     }
                     List<DuplicateMember> consolidated = consolidateMembers(members);
-                    if (consolidated.size() >= 2) {
+                    int lineCount = match.getLineCount();
+                    if (consolidated.size() >= 2 && lineCount >= MIN_DUPLICATED_LINES) {
                         groups.add(new DuplicateGroup("NEARMISS-" + groupId++, "NEAR_MISS",
-                                match.getTokenCount(), match.getLineCount(), consolidated));
+                                match.getTokenCount(), lineCount, consolidated));
                     }
                 }
             });
@@ -189,6 +193,9 @@ final class DuplicateDetectionEngine {
             int duplicatedLines = members.stream()
                     .mapToInt(m -> Math.max(0, m.endLine() - m.startLine() + 1))
                     .max().orElse(0);
+            if (duplicatedLines < MIN_DUPLICATED_LINES) {
+                continue;
+            }
             groups.add(new DuplicateGroup(idPrefix + groupId++, similarityType, 0, duplicatedLines, members));
         }
         return groups;
@@ -203,16 +210,33 @@ final class DuplicateDetectionEngine {
         if (file == null) {
             return null;
         }
+        ResolvedMethod contained = null;
         ResolvedMethod best = null;
         int bestOverlap = 0;
+        int rangeSpan = Math.max(1, endLine - beginLine + 1);
         for (ClassMetric type : file.classes()) {
             for (MethodMetric method : type.methods()) {
                 int overlap = lineOverlap(method.startLine(), method.endLine(), beginLine, endLine);
+                if (overlap <= 0) {
+                    continue;
+                }
+                boolean rangeInsideMethod = beginLine >= method.startLine() && endLine <= method.endLine();
+                boolean methodInsideRange = method.startLine() >= beginLine && method.endLine() <= endLine;
+                int methodSpan = Math.max(1, method.endLine() - method.startLine() + 1);
+                if ((rangeInsideMethod || methodInsideRange) && overlap * 100 / methodSpan >= 50) {
+                    contained = new ResolvedMethod(type.name(), method);
+                }
                 if (overlap > bestOverlap) {
                     bestOverlap = overlap;
                     best = new ResolvedMethod(type.name(), method);
                 }
             }
+        }
+        if (contained != null) {
+            return contained;
+        }
+        if (best != null && bestOverlap * 100 / rangeSpan >= 40) {
+            return best;
         }
         return best;
     }
@@ -255,7 +279,7 @@ final class DuplicateDetectionEngine {
             return null;
         }
         return new DuplicateGroup(group.groupId(), group.similarityType(), group.matchedTokenCount(),
-                group.duplicatedLines(), consolidateMembers(group.members()));
+                group.duplicatedLines(), group.similarityPercent(), consolidateMembers(group.members()));
     }
 
     private static DuplicateMember unionMemberLines(DuplicateMember a, DuplicateMember b) {

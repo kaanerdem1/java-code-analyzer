@@ -99,7 +99,11 @@ echo [STANDALONE] JSON path: %JSON%
 echo [STANDALONE] MD path:   %MD%
 
 pushd "%ROOT%"
-java -jar "%JAR%" "--path=%SOURCE%" "--output=%JSON%" "--markdown=%MD%" --top=20 --language-level=%LANGUAGE_LEVEL% !STATE_ARGS!
+set "ENC_ARGS="
+if defined SOURCE_ENCODING set "ENC_ARGS=--encoding=%SOURCE_ENCODING%"
+if defined ENCODING if not defined SOURCE_ENCODING set "ENC_ARGS=--encoding=%ENCODING%"
+
+java -jar "%JAR%" "--path=%SOURCE%" "--output=%JSON%" "--markdown=%MD%" --top=20 --language-level=%LANGUAGE_LEVEL% !ENC_ARGS! !STATE_ARGS!
 set "JAVA_EXIT=!ERRORLEVEL!"
 popd
 if !JAVA_EXIT! neq 0 exit /b !JAVA_EXIT!

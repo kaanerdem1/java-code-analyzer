@@ -70,7 +70,7 @@ class ReportOutputTest {
         String md = StandaloneReportMarkdown.render(report);
         if (report.duplicateStatistics().nearMissGroups() + report.duplicateStatistics().exactGroups() > 0) {
             assertTrue(md.contains("## Tekrarlayan / benzer kod (duplicate)"));
-            assertTrue(md.contains("| Dosya | Sınıf | Metod | Satır |"));
+            assertTrue(md.contains("benzerlik **%"));
         }
     }
 }

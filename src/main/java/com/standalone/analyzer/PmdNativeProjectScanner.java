@@ -179,7 +179,7 @@ public final class PmdNativeProjectScanner {
                             Map<String, List<PmdViolationRow>> violationsByPath, boolean attachDuplicateHashes) {
         String relative = JavaSourceDiscovery.relativePath(base, source);
         try {
-            String text = Files.readString(source, charset);
+            String text = SourceEncoding.read(source, charset);
             String abs = source.toAbsolutePath().normalize().toString();
             List<PmdViolationRow> fileViolations = violationsByPath.getOrDefault(abs, List.of());
             FileMetric metric = PmdFileMetricsBuilder.build(relative, text, languageLevel, fileViolations,

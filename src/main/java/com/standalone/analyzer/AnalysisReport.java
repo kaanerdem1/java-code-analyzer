@@ -198,7 +198,14 @@ public record AnalysisReport(
             String similarityType,
             int matchedTokenCount,
             int duplicatedLines,
+            int similarityPercent,
             List<DuplicateMember> members) {
+
+        public DuplicateGroup(String groupId, String similarityType, int matchedTokenCount,
+                              int duplicatedLines, List<DuplicateMember> members) {
+            this(groupId, similarityType, matchedTokenCount, duplicatedLines,
+                    DuplicateSimilarity.percent(similarityType, duplicatedLines, members), members);
+        }
     }
 
     public record DuplicateMember(String file, String className, String method, int startLine, int endLine) {

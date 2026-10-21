@@ -77,7 +77,7 @@ final class ParserMetricsFilePass {
                                  List<FileError> errors) {
         String relative = JavaSourceDiscovery.relativePath(base, source);
         try {
-            String text = Files.readString(source, charset);
+            String text = SourceEncoding.read(source, charset);
             SourceParser.Outcome outcome = SourceParser.parse(source, charset, languageLevel);
             ParseResult<CompilationUnit> result = outcome.result();
             if (result.isSuccessful() && result.getResult().isPresent()) {

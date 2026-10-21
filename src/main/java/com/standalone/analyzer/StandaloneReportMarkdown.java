@@ -812,8 +812,8 @@ final class StandaloneReportMarkdown {
         }
         out.write("## Tekrarlayan / benzer kod (duplicate)\n\n");
         out.write("Tarama bittikten sonra proje genelinde aranır: **birebir / isim değişmiş** kopyalar ");
-        out.write("yapısal hash ile, **yakın benzer** bloklar PMD CPD ile. Küçük metodlar (düşük CC ve az satır) ");
-        out.write("filtrelenir. `--no-duplicates` ile kapatılabilir.\n\n");
+        out.write("yapısal hash ile, **yakın benzer** bloklar PMD CPD ile. **40 satırdan kısa** eşleşmeler ");
+        out.write("rapora ve JSON’a girmez. `--no-duplicates` ile kapatılabilir.\n\n");
         out.write("**Nasıl okunur?** Her **grup** = aynı kod parçasının farklı yerlerde tekrarı. ");
         out.write("**EXACT_TEXT** = gövde metni aynı (sabitler ve isimler dahil). **EXACT_STRUCTURE** = kontrol akışı ");
         out.write("aynı ama isim/literal farklı olabilir; **aynı metod imzası** (parametre tipleri) şart. ");
@@ -858,6 +858,7 @@ final class StandaloneReportMarkdown {
             List<DuplicateMember> members = group.members();
             out.write("#### " + escapeCell(group.groupId()) + " — "
                     + duplicateTypeLabelTr(group.similarityType()));
+            out.write(" — benzerlik **%" + group.similarityPercent() + "**");
             if ("NEAR_MISS".equals(group.similarityType()) && group.matchedTokenCount() > 0) {
                 out.write(" (~" + group.matchedTokenCount() + " token");
                 if (group.duplicatedLines() > 0) {
@@ -868,10 +869,19 @@ final class StandaloneReportMarkdown {
                 out.write(" (" + group.duplicatedLines() + " satır)");
             }
             out.write(" — **" + members.size() + " konum**\n\n");
+            String headline = DuplicateSimilarity.pairHeadline(members);
+            if (!headline.isEmpty()) {
+                out.write(headline + "\n\n");
+            }
             for (DuplicateMember member : members) {
-                out.write("- `" + escapeCell(member.file()) + "` · **" + escapeCell(member.className())
-                        + "** · `" + escapeCell(member.method()) + "` — satır **"
-                        + member.startLine() + "–" + member.endLine() + "**\n");
+                String methodLabel = DuplicateSimilarity.methodLabel(member);
+                out.write("- **" + escapeCell(methodLabel) + "** — `" + escapeCell(member.file())
+                        + "` satır **" + member.startLine() + "–" + member.endLine() + "**");
+                if (member.method() != null && !member.method().isBlank()
+                        && !member.method().equals(DuplicateSimilarity.simpleMethodName(member.method()))) {
+                    out.write(" (`" + escapeCell(member.method()) + "`)");
+                }
+                out.write("\n");
             }
             out.write("\n");
         }
@@ -917,6 +927,7 @@ final class StandaloneReportMarkdown {
             String similarityType = "";
             int matchedTokenCount = 0;
             int duplicatedLines = 0;
+            int similarityPercent = -1;
             List<DuplicateMember> members = List.of();
             reader.beginObject();
             while (reader.hasNext()) {
@@ -925,12 +936,18 @@ final class StandaloneReportMarkdown {
                     case "similarityType" -> similarityType = reader.nextString();
                     case "matchedTokenCount" -> matchedTokenCount = reader.nextInt();
                     case "duplicatedLines" -> duplicatedLines = reader.nextInt();
+                    case "similarityPercent" -> similarityPercent = reader.nextInt();
                     case "members" -> members = readDuplicateMembersJson(reader);
                     default -> skipValue(reader);
                 }
             }
             reader.endObject();
-            groups.add(new DuplicateGroup(groupId, similarityType, matchedTokenCount, duplicatedLines, members));
+            if (similarityPercent < 0) {
+                groups.add(new DuplicateGroup(groupId, similarityType, matchedTokenCount, duplicatedLines, members));
+            } else {
+                groups.add(new DuplicateGroup(groupId, similarityType, matchedTokenCount, duplicatedLines,
+                        similarityPercent, members));
+            }
         }
         reader.endArray();
         return groups;

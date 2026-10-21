@@ -29,10 +29,11 @@ final class SourceParser {
         List<ParserConfiguration.LanguageLevel> order = fallbackOrder(preferred);
         ParseResult<CompilationUnit> last = null;
         List<ParserConfiguration.LanguageLevel> tried = new ArrayList<>();
+        String sourceText = SourceEncoding.read(source, charset);
         for (ParserConfiguration.LanguageLevel level : order) {
             tried.add(level);
             JavaParser parser = parserFor(charset, level);
-            ParseResult<CompilationUnit> result = parser.parse(source);
+            ParseResult<CompilationUnit> result = parser.parse(sourceText);
             last = result;
             if (result.isSuccessful() && result.getResult().isPresent()) {
                 return new Outcome(result, level, List.copyOf(tried));

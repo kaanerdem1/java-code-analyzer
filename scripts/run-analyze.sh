@@ -35,6 +35,7 @@ if [[ "${DETAIL}" == "summary" ]]; then EXTRA+=(--detail=summary); fi
 if [[ -n "${INCLUDE_GLOBS:-}" ]]; then EXTRA+=(--include="${INCLUDE_GLOBS}"); fi
 EXCLUDE_GLOBS="${EXCLUDE_GLOBS:-**/src/test/**}"
 if [[ -n "${EXCLUDE_GLOBS}" ]]; then EXTRA+=(--exclude="${EXCLUDE_GLOBS}"); fi
+if [[ -n "${SOURCE_ENCODING:-${ENCODING:-}}" ]]; then EXTRA+=(--encoding="${SOURCE_ENCODING:-${ENCODING}}"); fi
 
 mkdir -p "${OUT_DIR}"
 

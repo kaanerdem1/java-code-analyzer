@@ -30,7 +30,10 @@ final class DuplicateScanSupport {
                 System.err.println("[DUPLICATE] Near-miss (PMD CPD) failed, exact groups kept: " + e.getMessage());
             }
         }
-        return groups;
+        return groups.stream()
+                .filter(g -> g != null && g.duplicatedLines() >= DuplicateDetectionEngine.MIN_DUPLICATED_LINES
+                        && g.members() != null && g.members().size() >= 2)
+                .toList();
     }
 
     static DuplicateStatistics summarise(List<DuplicateGroup> groups) {

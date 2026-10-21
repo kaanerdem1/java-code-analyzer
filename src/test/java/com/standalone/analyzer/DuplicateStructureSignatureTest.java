@@ -25,6 +25,23 @@ class DuplicateStructureSignatureTest {
     }
 
     @Test
+    void shortClonesUnder40LinesAreDropped() {
+        MethodMetric left = trivial("tiny", "void", "void tiny()", HASH, "same-body");
+        MethodMetric shortLeft = MethodMetric.withoutLegacyExtensions(
+                "tiny", "METHOD", "void tiny()", "void",
+                1, 12, 4, 12, 10, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                false, 10.0, RiskLevel.LOW, List.of(), null, "same-body", HASH);
+        MethodMetric shortRight = MethodMetric.withoutLegacyExtensions(
+                "tiny", "METHOD", "void tiny()", "void",
+                1, 12, 4, 12, 10, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                false, 10.0, RiskLevel.LOW, List.of(), null, "same-body", HASH);
+        FileMetric a = file("A.java", classWithMethods("A", shortLeft));
+        FileMetric b = file("B.java", classWithMethods("B", shortRight));
+        DuplicateDetectionEngine engine = new DuplicateDetectionEngine();
+        assertTrue(engine.detectExactDuplicates(List.of(a, b)).isEmpty());
+    }
+
+    @Test
     void sameReturnTypeAndStructureGroups() {
         MethodMetric leftMethod = trivial("copy", "Foo", "Foo copy()", HASH, "body-a");
         MethodMetric rightMethod = trivial("copy", "Foo", "Foo copy()", HASH, "body-b");
@@ -64,8 +81,8 @@ class DuplicateStructureSignatureTest {
                                         String structuralHash, String bodyHash) {
         return MethodMetric.withoutLegacyExtensions(
                 name, "METHOD", signature, returnType,
-                1, 12,
-                4, 12, 10, 2,
+                1, 50,
+                4, 50, 42, 2,
                 0, 0, 0, 0,
                 0, 0, 0, 0,
                 0, 0, 0, 0,

@@ -268,7 +268,7 @@ public final class ProjectAnalyzer {
         String relative = JavaSourceDiscovery.relativePath(base, source);
         run.parsingFile(relative);
         try {
-            String sourceText = Files.readString(source, sourceCharset());
+            String sourceText = SourceEncoding.read(source, sourceCharset());
             if (incrementalEngine != null) {
                 if (scanContext != null && scanContext.bulkReuse(relative)) {
                     FileMetric reused = incrementalEngine.reusableFromState(relative);

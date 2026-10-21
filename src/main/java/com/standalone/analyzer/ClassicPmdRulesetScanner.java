@@ -7,12 +7,14 @@ import net.sourceforge.pmd.PMDConfiguration;
 import net.sourceforge.pmd.PmdAnalysis;
 import net.sourceforge.pmd.lang.LanguageVersion;
 import net.sourceforge.pmd.lang.document.FileCollector;
+import net.sourceforge.pmd.lang.document.FileId;
 import net.sourceforge.pmd.lang.rule.RuleSet;
 import net.sourceforge.pmd.lang.rule.RuleSetLoader;
 import net.sourceforge.pmd.reporting.RuleViolation;
 
 import java.io.IOException;
 import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -74,10 +76,11 @@ final class ClassicPmdRulesetScanner {
             RuleSet ruleSet = RuleSetLoader.fromPmdConfig(config).loadFromResource(rulesetPath);
             analysis.addRuleSet(ruleSet);
             FileCollector collector = analysis.files();
-            collector.setCharset(charset);
+            collector.setCharset(StandardCharsets.UTF_8);
             collector.setRecursive(false);
             for (Path source : sources) {
-                collector.addFile(source.toAbsolutePath().normalize());
+                Path abs = source.toAbsolutePath().normalize();
+                collector.addSourceFile(FileId.fromPath(abs), SourceEncoding.read(abs, charset));
             }
             if (violationsXml != null) {
                 analysis.addRenderer(config.createRenderer(true));

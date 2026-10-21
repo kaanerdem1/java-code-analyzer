@@ -284,6 +284,7 @@ final class AnalysisReportJsonWriter {
             w.name("similarityType").value(group.similarityType());
             w.name("matchedTokenCount").value(group.matchedTokenCount());
             w.name("duplicatedLines").value(group.duplicatedLines());
+            w.name("similarityPercent").value(group.similarityPercent());
             w.name("members");
             w.beginArray();
             for (AnalysisReport.DuplicateMember member : group.members()) {
