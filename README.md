@@ -2,188 +2,149 @@
 
 Kaynak kodda **metod karmaşıklığı ve risk** (CC, LOC, nesting, hotspot, Türkçe Markdown/JSON). **Call-graph / servis→metod çağrı zinciri bu repoda yok** — etki analizi ve lineage ayrı uygulamada.
 
-Terminal / parse hataları: [scan-error-management.md](scan-error-management.md). Çalıştırma ve `Empty value for --output=`: [docs/standalone-run-tr.md](docs/standalone-run-tr.md).
+Terminal / parse hataları: [scan-error-management.md](scan-error-management.md). Çalıştırma ve `Empty value for --output=`: [docs/standalone-run-tr.md](docs/standalone-run-tr.md). **PMD hattı:** [docs/pmd-scan-tr.md](docs/pmd-scan-tr.md).
 
 Legacy/incremental katman dokümantasyonu: [standalone-java-code-analyzer-dokumantasyon.md](standalone-java-code-analyzer-dokumantasyon.md).
 
-**Incremental cache (varsayılan açık):** `run-analyze.sh` / `.cmd` otomatik `--state=analysis-output/analyzer-state.json` gönderir. Sıra: **modül toplu skip** (pom/Gradle kökü) → **dosya byte hash** → parse sonrası **AST özeti** (yorum/boşluk-only ise skor motoru atlanır) → **metod hash**. Risk profili / şema değişince cache otomatik sıfırlanır. `NO_STATE=1` kapatır; `FRESH=1` tek koşuda state okumaz. Detay: [docs/incremental-cache-tr.md](docs/incremental-cache-tr.md). Markdown raporda **Incremental cache** ve **değişiklikler** bölümleri.
+**Incremental cache (parser yolu, varsayılan açık):** `run-analyze.sh` / `run-analyze.cmd` otomatik `--state=analysis-output/analyzer-state.json` gönderir. Detay: [docs/incremental-cache-tr.md](docs/incremental-cache-tr.md).
 
 ### JAR (`target/` — repoda yok)
 
 Analyzer kökünde **bir kez** `mvn package` → `target/java-code-analyzer.jar`. Script JAR yoksa analyzer repodaysa otomatik derler. **JDK 17+** gerekir.
 
-### Seçenek 1 — Dosyaları **taramak istediğin projeye** kopyala (önerilen)
+## İki ana tarama yolu
 
-Analyzer parçaları taranacak projenin kökünde:
+| Yol | Komut (Linux/macOS) | Windows (CMD / PowerShell) | Risk profili |
+|-----|---------------------|----------------------------|--------------|
+| **Parser** (JavaParser, tam metrik) | `./scripts/run-analyze.sh <proje>` | `scripts\run-analyze.cmd <proje>` | `enterprise-java` |
+| **PMD-native** (ruleset + PMD AST/metrik, JavaParser yok) | `./scripts/run-pmd-analyze.sh <proje>` | `scripts\run-pmd-analyze.cmd <proje>` | `enterprise-java-pmd` |
+
+**Çıktı klasörü:** `analysis-output/` (analyzer kökünde veya `OUTPUT_DIR`).
+
+| Parser | PMD-native |
+|--------|------------|
+| `parser-<etiket>-<tarih>.md` + `standalone-….json` | `pmd-<etiket>-<tarih>.md` + `pmd-….json` + `pmd-…-violations.xml` |
+
+Sabit dosya adları: `FIXED_REPORT=1` → `parser-raporu.md` / `pmd-raporu.md`.
+
+Karşılaştırma JSON: `./scripts/run-compare-pipelines.sh <proje>`. Klasik PMD yalnızca ihlal XML: `./scripts/run-classic-pmd.sh <proje>`.
+
+---
+
+## Hızlı başlangıç (Linux / macOS)
+
+```bash
+cd java-code-analyzer
+mvn package
+
+./scripts/run-analyze.sh /path/to/proje      # parser
+./scripts/run-pmd-analyze.sh /path/to/proje  # PMD-native
+```
+
+Örnek (bu repoda mock):
+
+```bash
+./scripts/run-analyze.sh mock-modules
+./scripts/run-pmd-analyze.sh mock-modules
+```
+
+---
+
+## Windows
+
+### Proje kökünde analyzer dosyaları (önerilen)
 
 ```
 D:\projeler\mobil-backend\
   scripts\run-analyze.cmd
+  scripts\run-pmd-analyze.cmd
   target\java-code-analyzer.jar
   src\main\java\...
-  pom.xml
 ```
 
-PowerShell dizini: proje kökü
+PowerShell — **parser:**
 
-```
+```powershell
 cd D:\projeler\mobil-backend
-$env:LANGUAGE_LEVEL = "JAVA_21"   # isteğe bağlı, taramadan önce
+$env:LANGUAGE_LEVEL = "JAVA_21"   # isteğe bağlı
 .\scripts\run-analyze.cmd
+# veya: .\scripts\run-analyze.cmd .\src\main\java
 ```
 
-Argüman vermezsen `.` = şu anki klasör taranır (yani `mobil-backend`).
+PowerShell — **PMD-native:**
 
-Sadece kaynak ağacı:
-
-```
-.\scripts\run-analyze.cmd .\src\main\java
-```
-
-Rapor: `D:\projeler\mobil-backend\analysis-output\parser-…-….md`  
- (`run-analyze.cmd` içinde `ROOT` = `scripts\` klasörünün bir üstü = proje kökü.)
-
-
-
-## Alternatif: Proje ile kardeş (yan yana)
-
-```
-D:\projeler\
-  mobil-backend\          ← taranacak
-  scripts\run-analyze.cmd
-  target\java-code-analyzer.jar
-```
-
-PowerShell dizini: `scripts` ve `target` ile aynı üst klasör (`D:\projeler`)
-
-```
-cd D:\projeler
+```powershell
+cd D:\projeler\mobil-backend
 $env:LANGUAGE_LEVEL = "JAVA_21"
-.\scripts\run-analyze.cmd .\mobil-backend
+.\scripts\run-pmd-analyze.cmd
+# veya: .\scripts\run-pmd-analyze.cmd .\src\main\java
 ```
 
-Argüman zorunlu; yoksa `D:\projeler`’in tamamı taranır (istenmeyebilir).
+CMD:
 
-Rapor: `D:\projeler\analysis-output\…` (analyzer kit’in kökünde, büyük projenin içinde değil).
+```bat
+cd D:\projeler\mobil-backend
+set LANGUAGE_LEVEL=JAVA_21
+scripts\run-pmd-analyze.cmd C:\yol\mobil-backend
+```
 
----
+Rapor: `analysis-output\pmd-….md` ve `pmd-….json` (proje/analyzer kökündeki `OUTPUT_DIR`).
 
+### Analyzer ayrı klasörde (kardeş dizin)
 
-
-### Seçenek 2 — Analyzer **ayrı klasörde** kalsın
-
-Taramak istediğin projeye dosya koyma. Terminal:
-
-```bash
-cd TARAMAK_ISTEDIGIN_PROJE/../java-code-analyzer
-# veya doğrudan bu aracın kurulu olduğu klasör:
-cd /Users/sen/java-code-analyzer
-
+```powershell
+cd D:\Developer\java-code-analyzer
 mvn package
-
-./scripts/run-analyze.sh TARAMAK_ISTEDIGIN_PROJE
-./scripts/run-pmd-analyze.sh TARAMAK_ISTEDIGIN_PROJE
-```
-
-Örnek (analyzer Masaüstü’nde, uygulama başka yerde):
-
-```bash
-cd ~/Developer/java-code-analyzer
-./scripts/run-analyze.sh ~/projects/mobil-backend
-./scripts/run-pmd-analyze.sh ~/projects/mobil-backend
-```
-
-**Çıktı:** `analysis-output/parser-…md` (parser) ve `analysis-output/pmd-…json` + `pmd-…md` + `pmd-…-violations.xml` (PMD ruleset + parser risk)
-
-## Üç tarama (karşılaştırma)
-
-| Komut | Anlam |
-|--------|--------|
-| `./scripts/run-analyze.sh <proje>` | Parser — risk JSON/MD (ana hat) |
-| `./scripts/run-pmd-analyze.sh <proje>` | **Aşama 1** PMD ruleset XML + **Aşama 2** parser metrik/risk/duplicate (JavaMetrics hizası) |
-| `./scripts/run-classic-pmd.sh <proje>` | **Klasik PMD** ruleset → `classic-pmd-*.xml` + violation Markdown |
-
-Mock: `run-standalone-mock.sh`, `run-pmd-mock.sh`, `run-classic-pmd-mock.sh`
-
-## PMD komutları
-
-`run-pmd-analyze.sh` parser ile aynı env sözleşmesini kullanır (`INCLUDE_GLOBS`, `EXCLUDE_GLOBS`, `LANGUAGE_LEVEL`, `WORKERS`, `REPORT_DETAIL`, `STANDALONE_RISK_PROFILE`). **`PmdScanMain`:** önce `config/pmd-ruleset-complexity.xml` ile klasik PMD → `pmd-*-violations.xml`, ardından parser ile **risk skoru** JSON/Markdown; CC/cog/NCSS/NPath PMD `JavaMetrics` ile hizalanır (`docs/pmd-scan-tr.md`). Sadece violation MD: `run-classic-pmd.sh` veya `ReadableReportMain pmd …xml`.
-
-**Mock (bu repodaki örnek modüller):**
-
-```bash
-cd java-code-analyzer
-mvn package
-./scripts/run-pmd-mock.sh
-```
-
-**Taramak istediğin proje** (analyzer repodan):
-
-```bash
-cd java-code-analyzer
-./scripts/run-pmd-analyze.sh TARAMAK_ISTEDIGIN_PROJE
-```
-
-Örnek:
-
-```bash
-./scripts/run-pmd-analyze.sh ~/projects/mobil-backend
+.\scripts\run-analyze.cmd D:\projeler\mobil-backend
+.\scripts\run-pmd-analyze.cmd D:\projeler\mobil-backend
 ```
 
 ---
 
+## Ortak ortam değişkenleri
 
+| Değişken | Açıklama |
+|----------|----------|
+| `LANGUAGE_LEVEL` | `JAVA_17` (varsayılan), `JAVA_21`, … |
+| `OUTPUT_DIR` | Rapor klasörü (varsayılan `analysis-output`) |
+| `EXCLUDE_GLOBS` | Varsayılan `**/src/test/**` |
+| `INCLUDE_GLOBS` | Örn. `**/src/main/java/**` |
+| `REPORT_DETAIL` | `full` (varsayılan) veya `summary` |
+| `WORKERS` | Paralel dosya sayısı (`0` = otomatik) |
+| `STANDALONE_RISK_PROFILE` | Parser: `enterprise-java`; PMD: `enterprise-java-pmd` |
+| `SCAN_PIPELINE` | PMD script: `pmd-native` (varsayılan) veya `parser-hybrid` |
 
-## Büyük monorepo / dev codebase
+**Linux/macOS örnek:**
 
-Varsayılan: paralel parse (CPU’ya göre worker), `target`/`build`/`.gradle` atlanır, 500 dosyada bir ilerleme logu.
+```bash
+LANGUAGE_LEVEL=JAVA_21 INCLUDE_GLOBS='**/src/main/java/**' \
+  ./scripts/run-pmd-analyze.sh ~/projects/mobil-backend
+```
 
-**Sadece production kaynağı (önerilen):**
+**Windows örnek:**
+
+```bat
+set LANGUAGE_LEVEL=JAVA_21
+set INCLUDE_GLOBS=**/src/main/java/**
+scripts\run-pmd-analyze.cmd C:\dev\mobil-backend
+```
+
+---
+
+## Büyük monorepo
 
 ```bash
 INCLUDE_GLOBS='**/src/main/java/**' \
 EXCLUDE_GLOBS='**/generated/**,**/build/**' \
-./scripts/run-analyze.sh
+./scripts/run-analyze.sh /path/to/monorepo
 ```
 
-**Büyük repo — küçük JSON (hotspot + dosya özeti, metod ağacı yok):**
+Küçük JSON (metod ağacı yok): `REPORT_DETAIL=summary WORKERS=8 ./scripts/run-analyze.sh`
 
-```bash
-REPORT_DETAIL=summary WORKERS=8 ./scripts/run-analyze.sh
-```
-
-
+---
 
 ## JDK ve `--language-level`
 
-**Aracı çalıştırmak:** JDK **17 veya üstü** (21, 25 dahil). JAR `release 17` ile derlenir; `mvn package` ve `java -jar` aynı JDK ile yapılır.
+**Aracı çalıştırmak:** JDK **17+**. **Taranan kaynak:** varsayılan `JAVA_17`; taramadan **önce** `LANGUAGE_LEVEL` / `--language-level` verin.
 
-**Taranan kaynak kodu:** Varsayılan parse seviyesi `JAVA_17` (`run-analyze.sh` → `LANGUAGE_LEVEL`; JAR → `--language-level=…`). Ayarı **taramadan önce** ver; script ortasında değiştirilmez.
-
-
-| Ortam                    | Örnek                                                             |
-| ------------------------ | ----------------------------------------------------------------- |
-| Linux / macOS (tek koşu) | `LANGUAGE_LEVEL=JAVA_21 ./scripts/run-analyze.sh .`               |
-| Linux / macOS (oturum)   | `export LANGUAGE_LEVEL=JAVA_21` → `./scripts/run-analyze.sh .`    |
-| Windows CMD              | `set LANGUAGE_LEVEL=JAVA_21` → `scripts\run-analyze.cmd C:\proje` |
-| JAR                      | `--language-level=JAVA_21`                                        |
-
-
----
-
-1. Analyzer kökünde:
-
-```bat
-scripts\run-analyze.cmd C:\yol\TARAMAK_ISTEDIGIN_PROJE
-```
-
-Çıktı: `analysis-output\parser-raporu.md` (analyzer repoda).
-
----
-
-
-
-
-
-
-
+Mock scriptleri: `run-standalone-mock.sh`, `run-pmd-mock.sh`, `run-classic-pmd-mock.sh`, `run-both-mock.sh`.
