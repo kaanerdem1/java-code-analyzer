@@ -95,7 +95,8 @@ final class PmdFileMetricsBuilder {
         int start = exec.getBeginLine();
         int end = exec.getEndLine();
         int physical = Math.max(0, end - start + 1);
-        int codeLines = Math.max(Math.max(ncss, physical), 1);
+        // Risk LOC = NCSS (yorum / boş satır hariç). physical satır aralığı yorumları da kapsar — skora girmez.
+        int codeLines = ncss > 0 ? ncss : Math.max(countCodeLinesExcludingComments(sourceText, start, end), 1);
 
         MethodMetric skeleton = MethodMetric.withoutLegacyExtensions(
                 name, kind, signature, returnType(exec), start, end,
@@ -132,6 +133,46 @@ final class PmdFileMetricsBuilder {
                 method.maxTryNestingDepth(), method.localVariableCount(), method.maxMethodCallChainLength(),
                 method.emptyCatchBlocks(), method.catchExceptionOrThrowable(), method.catchWithOnlyPrintStackTrace(),
                 method.primitiveObsessionIndex(), method.maxBooleanOperatorsInCondition(), 0, 0, 0, 0, 0, 0, 0);
+    }
+
+    /** Yorum ve boş satırları sayma — NCSS yoksa LOC yedek. */
+    static int countCodeLinesExcludingComments(String source, int startLine, int endLine) {
+        if (source == null || source.isEmpty() || startLine < 1 || endLine < startLine) {
+            return 0;
+        }
+        String[] lines = source.split("\n", -1);
+        int from = Math.min(startLine - 1, lines.length);
+        int to = Math.min(endLine, lines.length);
+        boolean inBlock = false;
+        int count = 0;
+        for (int i = from; i < to; i++) {
+            String line = lines[i];
+            StringBuilder code = new StringBuilder();
+            for (int c = 0; c < line.length(); c++) {
+                char ch = line.charAt(c);
+                char next = c + 1 < line.length() ? line.charAt(c + 1) : '\0';
+                if (inBlock) {
+                    if (ch == '*' && next == '/') {
+                        inBlock = false;
+                        c++;
+                    }
+                    continue;
+                }
+                if (ch == '/' && next == '*') {
+                    inBlock = true;
+                    c++;
+                    continue;
+                }
+                if (ch == '/' && next == '/') {
+                    break;
+                }
+                code.append(ch);
+            }
+            if (!code.toString().trim().isEmpty()) {
+                count++;
+            }
+        }
+        return count;
     }
 
     private static String returnType(ASTExecutableDeclaration exec) {
