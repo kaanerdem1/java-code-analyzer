@@ -119,6 +119,26 @@ LIMIT 50;
 
 ---
 
+## Bağlantı testi (psql yok)
+
+Repo kökünde `.env.catalog` dolu iken:
+
+```bash
+mvn package -q
+./scripts/test-catalog-jdbc.sh
+```
+
+Windows: `scripts\test-catalog-jdbc.cmd`
+
+- **`[CATALOG-PING] OK`** → JDBC doğru; tarama script’leri aynı ayarları kullanır.
+- **`password authentication failed`** → kullanıcı/şifre veya rol adı (büyük-küçük harf); pgAdmin’de **Test connection** ile birebir karşılaştır.
+- **timeout / connection refused** → VPN, firewall, host:port.
+- **SSL** → `sslmode=require`; sertifika hatasında DBA.
+
+pgAdmin: Server → Properties → Connection (Host, Port, Database, Username) = `.env.catalog` ile aynı olmalı.
+
+---
+
 ## Not
 
 - `CATALOG_SCHEMA=env` → PostgreSQL **şema adı**, dosya değil.
