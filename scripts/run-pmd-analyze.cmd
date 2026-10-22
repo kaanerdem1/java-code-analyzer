@@ -13,6 +13,8 @@ for %%I in ("%SOURCE_DIR%") do set "SOURCE=%%~fI"
 set "ROOT=%~dp0.."
 for %%I in ("%ROOT%") do set "ROOT=%%~fI"
 
+call "%~dp0load-env-catalog.cmd" "%ROOT%"
+
 if not defined OUTPUT_DIR set "OUTPUT_DIR=%ROOT%\analysis-output"
 for %%I in ("%OUTPUT_DIR%") do set "OUTPUT_DIR=%%~fI"
 if not defined LANGUAGE_LEVEL set "LANGUAGE_LEVEL=JAVA_17"

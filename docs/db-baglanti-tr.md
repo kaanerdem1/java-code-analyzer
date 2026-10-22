@@ -123,4 +123,5 @@ LIMIT 50;
 
 - `CATALOG_SCHEMA=env` → PostgreSQL **şema adı**, dosya değil.
 - DB yazmasın: `.env.catalog` yok veya `--no-catalog-write`.
+- **Windows CMD:** `scripts\run-analyze.cmd` / `run-pmd-analyze.cmd` de `.env.catalog` okur (JDBC açıksa DB’ye yazar). Koşu UUID: `set CATALOG_SCAN_RUN=...` (PowerShell: `[guid]::NewGuid()`).
 - Detay sorgu: [catalog-queries-parser-pmd-tr.md](./catalog-queries-parser-pmd-tr.md)
