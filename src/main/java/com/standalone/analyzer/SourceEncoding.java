@@ -17,7 +17,8 @@ import java.util.Set;
 
 /**
  * Kaynak {@code .java} okuma: UTF-8 sıkı dene, olmazsa Windows-1254 / ISO-8859-9
- * (eski TR kodlar). {@code MalformedInputException: Input length = 1} dosyayı düşürmez.
+ * (eski TR kodlar). Hiçbiri tutmazsa aynı sırayla REPLACE ile okur — dosya genelde
+ * taramadan düşmez; yalnızca gerçekten bozuk/ikili içerikte anlamsız karakterler olabilir.
  */
 final class SourceEncoding {
 
@@ -45,7 +46,10 @@ final class SourceEncoding {
                 // sonraki aday
             }
         }
-        return decodeReplacing(bytes, preferred != null ? preferred : StandardCharsets.UTF_8);
+        for (Charset charset : candidates(preferred)) {
+            return decodeReplacing(bytes, charset);
+        }
+        return decodeReplacing(bytes, StandardCharsets.UTF_8);
     }
 
     private static List<Charset> candidates(Charset preferred) {

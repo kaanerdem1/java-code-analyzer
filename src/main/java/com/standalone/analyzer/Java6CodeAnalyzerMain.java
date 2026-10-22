@@ -203,7 +203,7 @@ public final class Java6CodeAnalyzerMain {
                   --fresh             Ignore existing --state file (cold run, still writes state at end)
                   --no-duplicates     Skip duplicate / near-duplicate detection (incl. PMD CPD pass)
                   --no-near-duplicates  Skip PMD CPD only (EXACT_TEXT / EXACT_STRUCTURE still run)
-                  --min-duplicate-tokens=<n>  PMD CPD minimum token run (default 50)
+                  --min-duplicate-tokens=<n>  PMD CPD min. ortak parça eşiği (default 50; CLI adı PMD ile uyumlu)
                   --near-duplicate-auto-skip-files=<n>  Opt-in: skip CPD when parsed files >= n (default 0=never)
                   --force-near-duplicates  Reserved; CPD runs by default unless --no-near-duplicates or opt-in skip
                   --no-pmd-metrics    Skip PMD CC/cognitive/NCSS/NPath alignment (faster; JavaParser counts only)

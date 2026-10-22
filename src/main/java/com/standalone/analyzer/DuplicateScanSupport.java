@@ -42,7 +42,7 @@ final class DuplicateScanSupport {
         int nearGroups = 0;
         int nearMethods = 0;
         for (DuplicateGroup group : groups) {
-            if ("NEAR_MISS".equals(group.similarityType())) {
+            if (DuplicateSimilarityKind.isCpdSimilarity(group.similarityType())) {
                 nearGroups++;
                 nearMethods += group.members().size();
             } else {
@@ -57,9 +57,9 @@ final class DuplicateScanSupport {
         if (stats.exactGroups() + stats.nearMissGroups() == 0) {
             return;
         }
-        System.err.println("[DUPLICATE] " + stats.exactGroups() + " exact group(s) (" + stats.methodsInExactGroups()
-                + " methods) | " + stats.nearMissGroups() + " near-miss group(s) ("
-                + stats.methodsInNearMissGroups() + " methods)");
+        System.err.println("[DUPLICATE] " + stats.exactGroups() + " birebir/yapısal grup ("
+                + stats.methodsInExactGroups() + " konum) | " + stats.nearMissGroups()
+                + " CPD benzerlik grubu (" + stats.methodsInNearMissGroups() + " konum)");
     }
 
     private static boolean shouldRunNearMiss(ScanOptions scanOptions, int parsedFileCount) {

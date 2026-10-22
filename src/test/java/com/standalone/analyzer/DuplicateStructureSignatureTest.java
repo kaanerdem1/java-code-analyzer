@@ -50,7 +50,7 @@ class DuplicateStructureSignatureTest {
         DuplicateDetectionEngine engine = new DuplicateDetectionEngine();
         List<DuplicateGroup> groups = engine.detectExactStructureDuplicates(List.of(leftFile, rightFile));
         assertEquals(1, groups.size());
-        assertEquals("EXACT_STRUCTURE", groups.get(0).similarityType());
+        assertEquals(DuplicateSimilarityKind.YAPISAL_KLON.code(), groups.get(0).similarityType());
         assertEquals(2, groups.get(0).members().size());
     }
 

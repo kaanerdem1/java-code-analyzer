@@ -35,7 +35,7 @@ final class DuplicateDetectionEngine {
     static final int MIN_DUPLICATED_LINES = 40;
 
     List<DuplicateGroup> detectExactTextDuplicates(List<FileMetric> files) {
-        return groupByHash(files, "EXACT_TEXT", method -> method.bodyHash());
+        return groupByHash(files, DuplicateSimilarityKind.BIREBIR_METIN.code(), method -> method.bodyHash());
     }
 
     List<DuplicateGroup> detectExactStructureDuplicates(List<FileMetric> files) {
@@ -57,7 +57,7 @@ final class DuplicateDetectionEngine {
                 }
             }
         }
-        List<DuplicateGroup> groups = buildGroups(byHash, "EXACT_STRUCTURE", "EXACT-STRUCT-");
+        List<DuplicateGroup> groups = buildGroups(byHash, DuplicateSimilarityKind.YAPISAL_KLON.code(), "YAPISAL-");
         return dropStructureGroupsAlreadyExactText(files, groups);
     }
 
@@ -142,13 +142,20 @@ final class DuplicateDetectionEngine {
                         String className = resolved != null ? resolved.className() : "?";
                         String signature = resolved != null ? resolved.method().signature()
                                 : "(satır " + beginLine + "-" + endLine + ")";
+                        int reportStart = beginLine;
+                        int reportEnd = endLine;
+                        if (resolved != null) {
+                            reportStart = resolved.method().startLine();
+                            reportEnd = resolved.method().endLine();
+                        }
                         members.add(new DuplicateMember(relative, className, signature,
-                                beginLine, endLine));
+                                reportStart, reportEnd));
                     }
                     List<DuplicateMember> consolidated = consolidateMembers(members);
                     int lineCount = match.getLineCount();
                     if (consolidated.size() >= 2 && lineCount >= MIN_DUPLICATED_LINES) {
-                        groups.add(new DuplicateGroup("NEARMISS-" + groupId++, "NEAR_MISS",
+                        String kind = DuplicateSimilarityKind.classifyCpd(lineCount, consolidated);
+                        groups.add(new DuplicateGroup("BENZER-" + groupId++, kind,
                                 match.getTokenCount(), lineCount, consolidated));
                     }
                 }
@@ -178,7 +185,8 @@ final class DuplicateDetectionEngine {
                 }
             }
         }
-        String prefix = "EXACT_TEXT".equals(similarityType) ? "EXACT-TEXT-" : "EXACT-";
+        String prefix = DuplicateSimilarityKind.BIREBIR_METIN.code().equals(similarityType)
+                ? "BIREBIR-" : "YAPISAL-";
         return buildGroups(byHash, similarityType, prefix);
     }
 

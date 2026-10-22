@@ -812,35 +812,22 @@ final class StandaloneReportMarkdown {
         }
         out.write("## Tekrarlayan / benzer kod (duplicate)\n\n");
         out.write("Tarama bittikten sonra proje genelinde aranır: **birebir / isim değişmiş** kopyalar ");
-        out.write("yapısal hash ile, **yakın benzer** bloklar PMD CPD ile. **40 satırdan kısa** eşleşmeler ");
+        out.write("yapısal hash ile, **yakın benzer** kopyalar PMD CPD ile. **40 satırdan kısa** eşleşmeler ");
         out.write("rapora ve JSON’a girmez. `--no-duplicates` ile kapatılabilir.\n\n");
-        out.write("**Nasıl okunur?** Her **grup** = aynı kod parçasının farklı yerlerde tekrarı. ");
-        out.write("**EXACT_TEXT** = gövde metni aynı (sabitler ve isimler dahil). **EXACT_STRUCTURE** = kontrol akışı ");
-        out.write("aynı ama isim/literal farklı olabilir; **aynı metod imzası** (parametre tipleri) şart. ");
-        out.write("**NEAR_MISS** = PMD token eşleşmesi; literal aynı, isimler farklı olabilir.\n\n");
+        out.write("**Benzerlik yüzdesi:** Birebir **%100**, yapısal klon **%95**. CPD’de yüzde = ");
+        out.write("ortak satır ÷ metodun (veya konumun) satır aralığı (1–99); tür eşikleri **%90 / %75 / %60**.\n\n");
+        out.write("**Nasıl okunur?** Her **grup** = aynı kod parçasının farklı yerlerde tekrarı.\n\n");
         out.write("### Özet\n\n");
         out.write("| Tür | Grup sayısı | Konum sayısı |\n|-----|------------:|-------------:|\n");
-        int exactTextGroups = 0;
-        int exactTextMethods = 0;
-        int exactStructGroups = 0;
-        int exactStructMethods = 0;
-        for (DuplicateGroup group : g) {
-            if ("EXACT_TEXT".equals(group.similarityType())) {
-                exactTextGroups++;
-                exactTextMethods += group.members().size();
-            } else if ("EXACT_STRUCTURE".equals(group.similarityType())) {
-                exactStructGroups++;
-                exactStructMethods += group.members().size();
-            }
+        for (DuplicateSimilarityKind kind : DuplicateSimilarityKind.values()) {
+            int[] counts = DuplicateSimilarityKind.countGroups(g, kind);
+            out.write("| " + escapeCell(kind.labelTr()) + " | " + counts[0] + " | " + counts[1] + " |\n");
         }
-        out.write("| Birebir gövde (EXACT_TEXT — literal/isim dahil) | " + exactTextGroups + " | "
-                + exactTextMethods + " |\n");
-        out.write("| Aynı imza + yapı (EXACT_STRUCTURE) | " + exactStructGroups + " | "
-                + exactStructMethods + " |\n");
-        out.write("| Yakın benzer (NEAR_MISS — literal aynı) | " + s.nearMissGroups() + " | "
-                + s.methodsInNearMissGroups() + " |\n\n");
+        out.write("\n");
+        out.write("*JSON `duplicateStatistics`: `exactGroups` = birebir + yapısal; `nearMissGroups` = tüm ");
+        out.write("CPD benzerlik türleri.*\n\n");
         out.write("*Çok grup çıkıyorsa (JSON yazıcı gibi tekrarlı `w.name` kalıpları) eşiği yükseltin: ");
-        out.write("`--min-duplicate-tokens=80` veya `--no-duplicates`.*\n\n");
+        out.write("`--min-duplicate-tokens=80` (CPD minimum ortak parça eşiği) veya `--no-duplicates`.*\n\n");
         if (g.isEmpty()) {
             out.write("*Grup detayı yok — JSON `duplicateGroups`.*\n\n");
             return;
@@ -859,12 +846,16 @@ final class StandaloneReportMarkdown {
             out.write("#### " + escapeCell(group.groupId()) + " — "
                     + duplicateTypeLabelTr(group.similarityType()));
             out.write(" — benzerlik **%" + group.similarityPercent() + "**");
-            if ("NEAR_MISS".equals(group.similarityType()) && group.matchedTokenCount() > 0) {
-                out.write(" (~" + group.matchedTokenCount() + " token");
+            if (DuplicateSimilarityKind.isCpdSimilarity(group.similarityType())) {
                 if (group.duplicatedLines() > 0) {
-                    out.write(", çekirdek " + group.duplicatedLines() + " satır");
+                    out.write(" (ortak **" + group.duplicatedLines() + "** satır");
+                    if (group.matchedTokenCount() > 0) {
+                        out.write(", CPD eşiği ~" + group.matchedTokenCount());
+                    }
+                    out.write(")");
+                } else if (group.matchedTokenCount() > 0) {
+                    out.write(" (CPD eşiği ~" + group.matchedTokenCount() + ")");
                 }
-                out.write(")");
             } else if (group.duplicatedLines() > 0) {
                 out.write(" (" + group.duplicatedLines() + " satır)");
             }
@@ -888,16 +879,8 @@ final class StandaloneReportMarkdown {
     }
 
     private static String duplicateTypeLabelTr(String similarityType) {
-        if ("EXACT_TEXT".equals(similarityType)) {
-            return "Birebir gövde (literal/isim dahil)";
-        }
-        if ("EXACT_STRUCTURE".equals(similarityType)) {
-            return "Aynı imza + yapısal klon (isim/literal soyutlu)";
-        }
-        if ("NEAR_MISS".equals(similarityType)) {
-            return "Yakın benzer (literal aynı, isim farklı olabilir)";
-        }
-        return nullSafe(similarityType);
+        String label = DuplicateSimilarityKind.labelTrFor(similarityType);
+        return label == null || label.isBlank() ? nullSafe(similarityType) : label;
     }
 
     private static DuplicateStatistics readDuplicateStatisticsJson(JsonReader reader) throws IOException {

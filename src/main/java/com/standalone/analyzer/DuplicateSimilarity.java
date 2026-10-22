@@ -11,24 +11,32 @@ final class DuplicateSimilarity {
     private DuplicateSimilarity() {
     }
 
+    /**
+     * Rapordaki benzerlik yüzdesi (tek ölçek):
+     * <ul>
+     *   <li>Birebir metin: %100</li>
+     *   <li>Yapısal klon: %95 (isim/literal farklı; birebir ile CPD üst bandı arası sabit ağırlık)</li>
+     *   <li>CPD: ortak satır ÷ en geniş konum aralığı (1–99); tür eşikleri {@link DuplicateSimilarityKind}</li>
+     * </ul>
+     */
     static int percent(String similarityType, int duplicatedLines, List<DuplicateMember> members) {
+        DuplicateSimilarityKind kind = DuplicateSimilarityKind.fromCode(similarityType);
+        if (kind == DuplicateSimilarityKind.BIREBIR_METIN) {
+            return 100;
+        }
+        if (kind == DuplicateSimilarityKind.YAPISAL_KLON) {
+            return DuplicateSimilarityKind.YAPISAL_KLON_PERCENT;
+        }
+        if (kind != null && DuplicateSimilarityKind.isCpdSimilarity(similarityType)) {
+            return DuplicateSimilarityKind.lineOverlapPercent(duplicatedLines, members);
+        }
         if ("EXACT_TEXT".equals(similarityType)) {
             return 100;
         }
         if ("EXACT_STRUCTURE".equals(similarityType)) {
-            return 95;
+            return DuplicateSimilarityKind.YAPISAL_KLON_PERCENT;
         }
-        int maxSpan = 0;
-        if (members != null) {
-            for (DuplicateMember member : members) {
-                maxSpan = Math.max(maxSpan, span(member));
-            }
-        }
-        if (maxSpan <= 0 || duplicatedLines <= 0) {
-            return 0;
-        }
-        int raw = (int) Math.round(100.0 * duplicatedLines / maxSpan);
-        return Math.min(99, Math.max(1, raw));
+        return DuplicateSimilarityKind.lineOverlapPercent(duplicatedLines, members);
     }
 
     static String methodLabel(DuplicateMember member) {
@@ -94,9 +102,5 @@ final class DuplicateSimilarity {
             return "**`" + first + "`** şu metoda benziyor: " + rest + ".";
         }
         return "**`" + first + "`** şu metodlara benziyor: " + rest + ".";
-    }
-
-    private static int span(DuplicateMember member) {
-        return Math.max(0, member.endLine() - member.startLine() + 1);
     }
 }

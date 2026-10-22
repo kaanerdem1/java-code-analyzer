@@ -48,8 +48,8 @@ Mock koşusu: `PMD_RULESET=config/pmd-ruleset-complexity-mock.xml ./scripts/run-
 
 **PMD-native** (`run-pmd-analyze` varsayılan): önce PMD ruleset; risk katalogu parser + PMD sayım hizası (Halstead/nesting dahil — parser ile aynı skor, `PmdNativeParserRiskParityTest`). Duplicate:
 
-1. **EXACT_TEXT / EXACT_STRUCTURE** — risk sonrası JavaParser yalnızca `bodyHash` / `structuralHash` (`ParserDuplicateHashEnrichment`)
-2. **NEAR_MISS** — **PMD CPD**
+1. **BIREBIR_METIN / YAPISAL_KLON** — risk sonrası JavaParser yalnızca `bodyHash` / `structuralHash` (`ParserDuplicateHashEnrichment`)
+2. **BENZER_*** — **PMD CPD**; yüzde (ortak satır ÷ metod aralığı) ile çok yüksek / yüksek / orta / kısmi
 
 **Parser-hybrid:** metrik+risk de JavaParser; duplicate aynı motor.
 

@@ -15,9 +15,9 @@ class DuplicateSimilarityTest {
         List<DuplicateMember> members = List.of(
                 new DuplicateMember("A.java", "Left", "copy()", 1, 50),
                 new DuplicateMember("B.java", "Right", "copy()", 10, 59));
-        assertEquals(100, DuplicateSimilarity.percent("EXACT_TEXT", 50, members));
-        assertEquals(95, DuplicateSimilarity.percent("EXACT_STRUCTURE", 50, members));
-        assertEquals(83, DuplicateSimilarity.percent("NEAR_MISS", 50, List.of(
+        assertEquals(100, DuplicateSimilarity.percent("BIREBIR_METIN", 50, members));
+        assertEquals(95, DuplicateSimilarity.percent("YAPISAL_KLON", 50, members));
+        assertEquals(83, DuplicateSimilarity.percent("BENZER_ORTA", 50, List.of(
                 new DuplicateMember("A.java", "Left", "copy()", 1, 60),
                 new DuplicateMember("B.java", "Right", "paste()", 1, 60))));
     }
