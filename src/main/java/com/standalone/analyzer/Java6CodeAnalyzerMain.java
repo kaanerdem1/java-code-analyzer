@@ -81,6 +81,7 @@ public final class Java6CodeAnalyzerMain {
             writeJson(report, options);
             run.phase(ScanPhase.WRITE_MARKDOWN);
             writeMarkdownIfRequested(report, options);
+            CatalogWriteSupport.writeAfterScan(report, true, options.catalogDb());
 
             String jsonPath = options.output() != null
                     ? options.output().toAbsolutePath().normalize().toString()
@@ -207,6 +208,9 @@ public final class Java6CodeAnalyzerMain {
                   --near-duplicate-auto-skip-files=<n>  Opt-in: skip CPD when parsed files >= n (default 0=never)
                   --force-near-duplicates  Reserved; CPD runs by default unless --no-near-duplicates or opt-in skip
                   --no-pmd-metrics    Skip PMD CC/cognitive/NCSS/NPath alignment (faster; JavaParser counts only)
+                  --no-catalog-write  PostgreSQL katalog yazımını kapat (varsayılan: CATALOG_JDBC_URL varsa yazar)
+                  --catalog-jdbc=<url>  JDBC (ör. jdbc:postgresql://host:5432/db)
+                  --catalog-scan-run=<uuid>  Aynı koşu id (parser+PMD eşlemesi)
                   --help              Show this help
                 """);
     }
@@ -214,7 +218,7 @@ public final class Java6CodeAnalyzerMain {
     private record Options(Path path, Path output, Path markdown, int top, Charset charset,
                            ParserConfiguration.LanguageLevel languageLevel, ScanOptions scanOptions,
                            String riskProfile, Path riskConfig, Double maxFailureRatio, RiskLevel failOnRisk,
-                           boolean compact, boolean verbose, boolean help) {
+                           boolean compact, boolean verbose, boolean help, CatalogDbSettings catalogDb) {
 
         static Options parse(String[] args) {
             Path path = null;
@@ -244,6 +248,9 @@ public final class Java6CodeAnalyzerMain {
             int nearDuplicateAutoSkipMinFiles = -1;
             boolean forceNearMissDuplicates = false;
             boolean pmdMetricAlignment = true;
+            boolean noCatalogWrite = false;
+            String catalogJdbc = null;
+            String catalogScanRun = null;
             boolean outputFlagSeen = false;
             boolean markdownFlagSeen = false;
 
@@ -305,6 +312,12 @@ public final class Java6CodeAnalyzerMain {
                     forceNearMissDuplicates = true;
                 } else if (arg.equals("--no-pmd-metrics")) {
                     pmdMetricAlignment = false;
+                } else if (arg.equals("--no-catalog-write")) {
+                    noCatalogWrite = true;
+                } else if (arg.startsWith("--catalog-jdbc=")) {
+                    catalogJdbc = value(arg);
+                } else if (arg.startsWith("--catalog-scan-run=")) {
+                    catalogScanRun = value(arg);
                 } else {
                     throw new IllegalArgumentException("Unknown argument: " + arg);
                 }
@@ -320,8 +333,9 @@ public final class Java6CodeAnalyzerMain {
                     !noDefaultIgnores, incrementalState, freshIncremental, detectDuplicates, minDuplicateTokens,
                     detectNearMissDuplicates, nearDuplicateAutoSkipMinFiles, forceNearMissDuplicates,
                     pmdMetricAlignment);
+            CatalogDbSettings catalogDb = CatalogDbSettings.resolve(noCatalogWrite, catalogJdbc, catalogScanRun);
             return new Options(path, output, markdown, top, charset, languageLevel, scanOptions, riskProfile,
-                    riskConfig, maxFailureRatio, failOnRisk, compact, verbose, help);
+                    riskConfig, maxFailureRatio, failOnRisk, compact, verbose, help, catalogDb);
         }
 
         private static double parseRatio(String raw) {

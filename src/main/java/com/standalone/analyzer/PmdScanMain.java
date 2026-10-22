@@ -85,6 +85,8 @@ public final class PmdScanMain {
                 System.err.println("[PMD-SCAN] Markdown: " + options.markdown().toAbsolutePath().normalize());
             }
 
+            CatalogWriteSupport.writeAfterScan(report, false, options.catalogDb());
+
             AnalysisReport.Summary s = report.summary();
             System.err.println("[PMD-SCAN] Done: " + s.filesParsed() + " parsed, " + s.filesFailed() + " failed, "
                     + s.methodCount() + " methods, max CC " + s.maxCyclomaticComplexity());
@@ -132,6 +134,8 @@ public final class PmdScanMain {
                   --violations-xml=<file>  Aşama 1 pmd.xml (vars: JSON adi -violations.xml)
                   --skip-pmd-ruleset       Yalnizca metrik hatti (ruleset kapali)
                   --pipeline=pmd-native|parser-hybrid   (vars: pmd-native)
+                  --no-catalog-write  PostgreSQL katalog (CATALOG_JDBC_URL) kapalı
+                  --catalog-jdbc=<url>  --catalog-scan-run=<uuid>
                   --help
                 """);
     }
@@ -139,7 +143,8 @@ public final class PmdScanMain {
     private record Options(Path path, Path output, Path markdown, int top, Charset charset,
                            ParserConfiguration.LanguageLevel languageLevel, ScanOptions scanOptions,
                            String riskProfile, Path riskConfig, Path ruleset, Path violationsXml,
-                           boolean runRulesetPhase, ScanPipeline pipeline, boolean compact, boolean help) {
+                           boolean runRulesetPhase, ScanPipeline pipeline, boolean compact, boolean help,
+                           CatalogDbSettings catalogDb) {
 
         static Options parse(String[] args) {
             Path path = null;
@@ -163,6 +168,9 @@ public final class PmdScanMain {
             Path violationsXml = null;
             boolean runRulesetPhase = true;
             ScanPipeline pipeline = ScanPipeline.PMD_NATIVE;
+            boolean noCatalogWrite = false;
+            String catalogJdbc = null;
+            String catalogScanRun = null;
 
             for (String arg : args) {
                 if (arg.equals("--help") || arg.equals("-h")) {
@@ -207,6 +215,12 @@ public final class PmdScanMain {
                     runRulesetPhase = false;
                 } else if (arg.startsWith("--pipeline=")) {
                     pipeline = ScanPipeline.parse(value(arg));
+                } else if (arg.equals("--no-catalog-write")) {
+                    noCatalogWrite = true;
+                } else if (arg.startsWith("--catalog-jdbc=")) {
+                    catalogJdbc = value(arg);
+                } else if (arg.startsWith("--catalog-scan-run=")) {
+                    catalogScanRun = value(arg);
                 } else {
                     throw new IllegalArgumentException("Unknown argument: " + arg);
                 }
@@ -219,8 +233,9 @@ public final class PmdScanMain {
             }
             ScanOptions scanOptions = ScanOptions.fromCli(includes, excludes, workers, progressEvery, detail,
                     !noDefaultIgnores, null, false, true, 50, true, 0, false, pmdMetricAlignment);
+            CatalogDbSettings catalogDb = CatalogDbSettings.resolve(noCatalogWrite, catalogJdbc, catalogScanRun);
             return new Options(path, output, markdown, top, charset, languageLevel, scanOptions, riskProfile,
-                    riskConfig, ruleset, violationsXml, runRulesetPhase, pipeline, compact, help);
+                    riskConfig, ruleset, violationsXml, runRulesetPhase, pipeline, compact, help, catalogDb);
         }
 
         static Path violationsXmlSibling(Path jsonOutput) {

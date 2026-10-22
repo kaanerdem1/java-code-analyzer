@@ -31,6 +31,36 @@ Karşılaştırma JSON: `./scripts/run-compare-pipelines.sh <proje>`. Klasik PMD
 
 ---
 
+## Pull sonrası — PostgreSQL katalog (özet)
+
+Metod risk kayıtları `env.method_risk_analyze`, benzerlik grupları `env.method_similarity` tablolarına gider. **`CATALOG_JDBC_URL` tanımlıysa** tarama bitince otomatik yazılır.
+
+**`.env` dosyası yok.** Repoda yalnızca şablon vardır: [`.env.catalog.example`](.env.catalog.example). Bağlantı için ya bu dosyayı kopyalarsınız ya da aynı değişkenleri terminalde `export` edersiniz — ikisi de aynı iş.
+
+| Kavram | Ne? |
+|--------|-----|
+| `.env.catalog` | **Senin oluşturduğun** yerel dosya (repo kökü). Git’e girmez (`.gitignore`). Script varsa `source` eder. |
+| `.env.catalog.example` | Commit’li örnek; `cp .env.catalog.example .env.catalog` ile kopyala, şifreyi doldur. |
+| `CATALOG_SCHEMA=env` | PostgreSQL’deki **şema adı** (`env.method_risk_analyze`). Dotenv dosyası değil. pgAdmin’de `Schemas → env`. |
+| `inventory_db` | Veritabanı **adı** (JDBC URL’de `/inventory_db`). Envanter + katalog tabloları burada. |
+
+Dosya kullanmadan tek seferlik tarama:
+
+```bash
+export CATALOG_JDBC_URL='jdbc:postgresql://localhost:5432/inventory_db'
+export PGUSER=kaanerdem
+export PGPASSWORD='...'
+export CATALOG_SCHEMA=env
+./scripts/run-analyze.sh /path/to/proje
+```
+
+**Ekip kısa rehber:** [docs/db-baglanti-tr.md](docs/db-baglanti-tr.md).  
+Ayrıntı: [docs/catalog-db-tr.md](docs/catalog-db-tr.md), parser/PMD sorguları: [docs/catalog-queries-parser-pmd-tr.md](docs/catalog-queries-parser-pmd-tr.md), envanter bağlantısı: [docs/catalog-env-inventory-link-tr.md](docs/catalog-env-inventory-link-tr.md).
+
+DB yazımı istemiyorsanız: `CATALOG_JDBC_URL` vermeyin, `.env.catalog` oluşturmayın veya `--no-catalog-write`.
+
+---
+
 ## Hızlı başlangıç (Linux / macOS)
 
 ```bash
@@ -113,6 +143,10 @@ mvn package
 | `WORKERS` | Paralel dosya sayısı (`0` = otomatik) |
 | `STANDALONE_RISK_PROFILE` | Parser: `enterprise-java`; PMD: `enterprise-java-pmd` |
 | `SCAN_PIPELINE` | PMD script: `pmd-native` (varsayılan) veya `parser-hybrid` |
+| `CATALOG_JDBC_URL` | Tanımlıysa tarama sonrası PostgreSQL katalog yazımı (JDBC) |
+| `CATALOG_SCHEMA` | Katalog şeması (varsayılan `env`) |
+| `CATALOG_SCAN_RUN` | Aynı koşu UUID (parser + PMD satırlarını eşleştirmek için) |
+| `PGUSER` / `PGPASSWORD` | Katalog DB kimlik bilgisi (`.env.catalog`) |
 
 **Linux/macOS örnek:**
 
@@ -147,4 +181,50 @@ Küçük JSON (metod ağacı yok): `REPORT_DETAIL=summary WORKERS=8 ./scripts/ru
 
 **Aracı çalıştırmak:** JDK **17+**. **Taranan kaynak:** varsayılan `JAVA_17`; taramadan **önce** `LANGUAGE_LEVEL` / `--language-level` verin.
 
-Mock scriptleri: `run-standalone-mock.sh`, `run-pmd-mock.sh`, `run-classic-pmd-mock.sh`, `run-both-mock.sh`.
+Mock-modules: `./scripts/run-analyze.sh mock-modules` ve `./scripts/run-pmd-analyze.sh mock-modules`.
+
+---
+
+## PostgreSQL katalog — ekip checklist (adım adım)
+
+Tam liste: **[docs/db-baglanti-tr.md](docs/db-baglanti-tr.md)**. Özet tablo:
+
+Kurumsal kaynak + dolu `env.java_method` envanteri olan makine için. Mock-modules ile envantere bağ (`java_method_id`) genelde **olmaz**; gerçek proje path’i kullanın.
+
+| Adım | Ne zaman | Komut / iş |
+|------|----------|------------|
+| 1 | Bir kez (ekip aynı commit) | `git pull` — analyzer repo güncel |
+| 2 | Bir kez / şema değişince | `psql -h HOST -U USER -d inventory_db -f scripts/catalog-schema.sql` — tablolar + `java_method_id` FK |
+| 3 | Bir kez (view + eski satır backfill) | `psql -d inventory_db -f scripts/catalog-inventory-link.sql` — isteğe bağlı tekrar |
+| 4 | Makinede bir kez | `cp .env.catalog.example .env.catalog` → `CATALOG_JDBC_URL`, `PGUSER`, `PGPASSWORD`, `CATALOG_SCHEMA=env` doldur **veya** aynı değişkenleri `export` et |
+| 5 | Tarama öncesi | `mvn package` |
+| 6 | Her parser+PMD koşusu | Aşağıdaki `CATALOG_SCAN_RUN` export’u — aynı UUID ile parser + PMD |
+| 7 | Her tarama | `./scripts/run-analyze.sh /path/to/kurumsal/kaynak` |
+| 8 | Aynı `CATALOG_SCAN_RUN` ile | `./scripts/run-pmd-analyze.sh /path/to/kurumsal/kaynak` |
+
+Adım 6 için (macOS/Linux):
+
+```bash
+export CATALOG_SCAN_RUN=$(uuidgen | tr '[:upper:]' '[:lower:]')
+```
+
+**Beklenen:** Konsolda `[CATALOG] PostgreSQL: N satır yazıldı | scan_run_id=...`
+
+**Doğrulama (pgAdmin / psql):**
+
+```sql
+SELECT COUNT(*) AS satir, COUNT(java_method_id) AS envantere_bagli
+FROM env.method_risk_analyze
+WHERE scan_run_id = 'SCAN-RUN-UUID-BURAYA'::uuid;
+```
+
+Envanter servisleri ile risk:
+
+```sql
+SELECT service_name, fqcn, risk_score, java_method_id
+FROM env.v_method_risk_with_service
+WHERE scan_run_id = 'SCAN-RUN-UUID-BURAYA'::uuid AND java_method_id IS NOT NULL
+LIMIT 20;
+```
+
+Örnek sorgu dosyası: `scripts/catalog-queries-examples.sql`. Uzak DB: JDBC URL’de `?sslmode=require` — [docs/catalog-db-tr.md](docs/catalog-db-tr.md).

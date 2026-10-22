@@ -2,6 +2,7 @@ target/
 dist/
 mock-modules/target/
 analysis-output/
+.env.catalog
 mock-modules/reports/
 .idea/
 *.iml

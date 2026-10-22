@@ -16,6 +16,14 @@
 #   FIXED_REPORT=1  → pmd-raporu.md + pmd-standalone.json
 set -euo pipefail
 
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+if [[ -f "${ROOT}/.env.catalog" ]]; then
+  set -a
+  # shellcheck source=/dev/null
+  source "${ROOT}/.env.catalog"
+  set +a
+fi
+
 # shellcheck source=report-name.sh
 source "$(cd "$(dirname "$0")" && pwd)/report-name.sh"
 # shellcheck source=resolve-jar.sh
@@ -23,7 +31,6 @@ source "$(cd "$(dirname "$0")" && pwd)/resolve-jar.sh"
 
 SOURCE_DIR="${1:-.}"
 SOURCE="$(cd "${SOURCE_DIR}" && pwd)"
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 OUT_DIR="${OUTPUT_DIR:-${ROOT}/analysis-output}"
 LANG="${LANGUAGE_LEVEL:-JAVA_17}"
 WORKERS="${WORKERS:-0}"

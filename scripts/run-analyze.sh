@@ -16,6 +16,14 @@
 #   FRESH=1                 (1 = state dosyasını okuma, tek seferlik tam tarama)
 set -euo pipefail
 
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+if [[ -f "${ROOT}/.env.catalog" ]]; then
+  set -a
+  # shellcheck source=/dev/null
+  source "${ROOT}/.env.catalog"
+  set +a
+fi
+
 # shellcheck source=report-name.sh
 source "$(cd "$(dirname "$0")" && pwd)/report-name.sh"
 # shellcheck source=resolve-jar.sh
@@ -24,7 +32,6 @@ source "$(cd "$(dirname "$0")" && pwd)/resolve-jar.sh"
 # Argüman yoksa bulunduğunuz klasör taranır (proje kökünde çalıştırın).
 SOURCE_DIR="${1:-.}"
 SOURCE="$(cd "${SOURCE_DIR}" && pwd)"
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 OUT_DIR="${OUTPUT_DIR:-${ROOT}/analysis-output}"
 LANG="${LANGUAGE_LEVEL:-JAVA_17}"
 WORKERS="${WORKERS:-0}"

@@ -27,7 +27,7 @@
 
 Örnek üretim kuralları: `CyclomaticComplexity`, `CognitiveComplexity`, `NPathComplexity`, `NcssCount`, `ExcessiveParameterList`, `AvoidDeeplyNestedIfStmts`, `GodClass`, `TooManyMethods`, `LawOfDemeter`, `EmptyCatchBlock`, `AvoidCatchingGenericException`, `AvoidPrintStackTrace`, `LooseCoupling`, …
 
-Mock koşusu: `PMD_RULESET=config/pmd-ruleset-complexity-mock.xml ./scripts/run-classic-pmd-mock.sh`
+Mock ruleset: `PMD_RULESET=config/pmd-ruleset-complexity-mock.xml ./scripts/run-classic-pmd.sh mock-modules`
 
 **Eklemek / çıkarmak (Maven ruleset):** XML’de `<rule ref="…">`. **`PmdScanMain` / parser metrikleri:** `ComplexityVisitor`, `SupplementalMetrics`, `config/risk-parameters-proposal.yaml` — yeni risk boyutu burada tanımlanır; PMD taraması parser ile otomatik hizalanır (`PmdParserMetricsParityTest`).
 
